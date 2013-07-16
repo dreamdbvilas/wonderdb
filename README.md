@@ -24,7 +24,7 @@ start.bat server.properties
 Starting Client:
 ----------------
 
-java -cp <classpath for wonderdbclient.jar and netty-3.6.1.Final.jar> <machine name> <port>
+java -cp classpath for wonderdbclient.jar and netty-3.6.1.Final.jar machine name port
 
 By default in server.properties, machine is localhost and port is 6060
 
