@@ -35,7 +35,7 @@ Regiserting jdbc driver:
 DriverManager.registerDriver(new WonderDBDriver());
 
 JDBC URL:
-wonderdb://<host>:<port>
+wonderdb://host:port
 
 Currently, I am supporting only one host and port, but in the future I am going to support list of hosts.
 
