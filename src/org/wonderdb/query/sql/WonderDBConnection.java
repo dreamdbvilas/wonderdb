@@ -1,3 +1,5 @@
+package org.wonderdb.query.sql;
+
 /*******************************************************************************
  *    Copyright 2013 Vilas Athavale
  *
@@ -13,7 +15,6 @@
  *    See the License for the specific language governing permissions and
  *    limitations under the License.
  *******************************************************************************/
-package org.wonderdb.query.sql;
 
 import java.net.InetSocketAddress;
 import java.sql.Array;
@@ -35,6 +36,7 @@ import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
 
 import org.jboss.netty.bootstrap.ClientBootstrap;
@@ -78,7 +80,6 @@ public class WonderDBConnection implements Connection {
                     Executors.newCachedThreadPool());
 
         bootstrap = new ClientBootstrap(factory);
-
         bootstrap.setPipelineFactory(new ChannelPipelineFactory() {
             public ChannelPipeline getPipeline() {
                 return Channels.pipeline  (/* new BufferDecoder(), */ 
@@ -382,6 +383,7 @@ public class WonderDBConnection implements Connection {
 		
 		@Override
     	public void messageReceived(ChannelHandlerContext ctx, MessageEvent e) {
+			System.out.println("received");
     		ChannelBuffer buf = (ChannelBuffer) e.getMessage();
     		tmpBuffer.writeBytes(buf, buf.readableBytes());
     		while (tmpBuffer.readableBytes() > 0) {
@@ -410,12 +412,11 @@ public class WonderDBConnection implements Connection {
 	    		} else {
 	    			break;
 	    		}
-	    		
-				if (tmpBuffer.capacity() > 1000) {
-					ChannelBuffer newTmpBuffer = ChannelBuffers.dynamicBuffer();
-					newTmpBuffer.writeBytes(tmpBuffer);
-					tmpBuffer = newTmpBuffer;
-				}
+//				if (tmpBuffer.capacity() > 1000) {
+//					ChannelBuffer newTmpBuffer = ChannelBuffers.dynamicBuffer();
+//					newTmpBuffer.writeBytes(tmpBuffer);
+//					tmpBuffer = newTmpBuffer;
+//				}
 
 				if (endRec != 0) {
 		    		synchronized (lock) {
@@ -489,4 +490,35 @@ public class WonderDBConnection implements Connection {
         	return null;
         }    	
     }
+
+	@Override
+	public void setSchema(String schema) throws SQLException {
+		// TODO Auto-generated method stub
+		
+	}
+
+	@Override
+	public String getSchema() throws SQLException {
+		// TODO Auto-generated method stub
+		return null;
+	}
+
+	@Override
+	public void abort(Executor executor) throws SQLException {
+		// TODO Auto-generated method stub
+		
+	}
+
+	@Override
+	public void setNetworkTimeout(Executor executor, int milliseconds)
+			throws SQLException {
+		// TODO Auto-generated method stub
+		
+	}
+
+	@Override
+	public int getNetworkTimeout() throws SQLException {
+		// TODO Auto-generated method stub
+		return 0;
+	}
 }

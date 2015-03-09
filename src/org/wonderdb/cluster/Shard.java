@@ -1,3 +1,5 @@
+package org.wonderdb.cluster;
+
 /*******************************************************************************
  *    Copyright 2013 Vilas Athavale
  *
@@ -13,99 +15,49 @@
  *    See the License for the specific language governing permissions and
  *    limitations under the License.
  *******************************************************************************/
-package org.wonderdb.cluster;
 
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-
-import org.wonderdb.schema.CollectionColumn;
-import org.wonderdb.schema.SchemaMetadata;
 import org.wonderdb.types.DBType;
-import org.wonderdb.types.impl.ColumnType;
-import org.wonderdb.types.impl.IndexKeyType;
+
 
 public class Shard {
-	int schemaId = -1;
-	String schemaObjectName;
+	String indexName;
 	String replicaSetName;
-//	String masterMachineId;
-//	IndexKeyType ikt;
-	Map<ColumnType, DBType> minMap = null;
-	Map<ColumnType, DBType> maxMap = null;
+
+	DBType min = null;
+	DBType max = null;
 	
-	public Shard(int schemaId, String collectionName, String replicaSet) {
-		if (collectionName == null || replicaSet == null) {
+	public Shard(String indexName) {
+		if (indexName == null) {
 			throw new RuntimeException("Invalid input: ");
 		}
-		this.schemaId = schemaId;
-		this.schemaObjectName = collectionName;
-		this.replicaSetName = replicaSet;
+		this.indexName = indexName;
 	}
 	
-	public int getSchemaId() {
-		return schemaId;
-	}
-	
-	public String getSchemaObjectName() {
-		return schemaObjectName;
-	}
-
-	public String getReplicaSetName() {
-		return replicaSetName;
-	}
-	
-//	public String getMasterMachineId() {
-//		return masterMachineId;
-//	}
-//
-//	public void setMasterMachineId(String masterMachineId) {
-//		this.masterMachineId = masterMachineId;
-//	}
-//	
-//	public IndexKeyType getIkt() {
-//		return ikt;
-//	}
-	
-	public void setMinMap(IndexKeyType ikt) {
-		if (ikt == null) {
+	public void setMinMap(DBType min) {
+		if (min == null) {
 			return;
 		}
-		List<CollectionColumn> list = SchemaMetadata.getInstance().getIndex(schemaId).getIndex().getColumnList();
-		Map<ColumnType, DBType> map = new HashMap<ColumnType, DBType>();
-		for (int i = 0; i < list.size(); i++) {
-			ColumnType ct = list.get(i).getColumnType();
-			map.put(ct, ikt.getValue().get(i));
-		}
-		
-		minMap = map;
+		this.min = min;
 	}
 	
-	public void setMaxMap(IndexKeyType ikt) {
-		if (ikt == null) {
+	public void setMaxMap(DBType max) {
+		if (max == null) {
 			return;
 		}
-		List<CollectionColumn> list = SchemaMetadata.getInstance().getIndex(schemaId).getIndex().getColumnList();
-		Map<ColumnType, DBType> map = new HashMap<ColumnType, DBType>();
-		for (int i = 0; i < list.size(); i++) {
-			ColumnType ct = list.get(i).getColumnType();
-			map.put(ct, ikt.getValue().get(i));
-		}
-		
-		maxMap = map;
+		this.max = max;
 	}
 	
-	public Map<ColumnType, DBType> getMinMap() {
-		return minMap;
+	public DBType getMin() {
+		return min;
 	}
 	
-	public Map<ColumnType, DBType> getMaxMap() {
-		return maxMap;
+	public DBType getMax() {
+		return max;
 	}
 	
 	@Override
 	public int hashCode() {
-		return schemaObjectName.hashCode();
+		return indexName.hashCode();
 	}
 	
 	@Override
@@ -116,8 +68,7 @@ public class Shard {
 		
 		if (o instanceof Shard) {
 			Shard tmp = (Shard) o;
-			return (tmp.schemaId == this.schemaId && this.schemaId < 3) ||
-					tmp.schemaObjectName.equals(this.schemaObjectName) && tmp.replicaSetName.equals(this.replicaSetName);
+			return this.indexName.equals(tmp.indexName) && this.max.equals(tmp.max) && this.min.equals(tmp.min);
 		}
 		
 		return false;

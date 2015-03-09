@@ -1,3 +1,5 @@
+package org.wonderdb.query.parse;
+
 /*******************************************************************************
  *    Copyright 2013 Vilas Athavale
  *
@@ -13,47 +15,80 @@
  *    See the License for the specific language governing permissions and
  *    limitations under the License.
  *******************************************************************************/
-package org.wonderdb.query.parse;
 
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 
-import org.wonderdb.block.BlockPtr;
-import org.wonderdb.block.record.manager.TableRecordManager;
-import org.wonderdb.cache.CacheEntryPinner;
+import org.wonderdb.cache.impl.CacheEntryPinner;
 import org.wonderdb.cluster.ClusterManagerFactory;
 import org.wonderdb.cluster.Shard;
-import org.wonderdb.collection.exceptions.InvalidCollectionNameException;
-import org.wonderdb.collection.exceptions.InvalidIndexException;
+import org.wonderdb.core.collection.WonderDBList;
+import org.wonderdb.exception.InvalidCollectionNameException;
+import org.wonderdb.exception.InvalidIndexException;
 import org.wonderdb.expression.AndExpression;
-import org.wonderdb.parser.UQLParser.CreateIndexStmt;
-import org.wonderdb.parser.UQLParser.IndexCol;
-import org.wonderdb.schema.CollectionColumn;
+import org.wonderdb.metadata.StorageMetadata;
+import org.wonderdb.parser.jtree.Node;
+import org.wonderdb.parser.jtree.SimpleNode;
+import org.wonderdb.parser.jtree.SimpleNodeHelper;
+import org.wonderdb.parser.jtree.UQLParserTreeConstants;
 import org.wonderdb.schema.CollectionMetadata;
-import org.wonderdb.schema.Index;
 import org.wonderdb.schema.SchemaMetadata;
-import org.wonderdb.server.WonderDBPropertyManager;
+import org.wonderdb.serialize.SerializerManager;
 import org.wonderdb.txnlogger.LogManager;
 import org.wonderdb.txnlogger.TransactionId;
-import org.wonderdb.types.DBType;
-import org.wonderdb.types.impl.ColumnType;
+import org.wonderdb.types.ColumnNameMeta;
+import org.wonderdb.types.ColumnSerializerMetadata;
+import org.wonderdb.types.IndexNameMeta;
+import org.wonderdb.types.record.ListRecord;
+import org.wonderdb.types.record.ObjectListRecord;
 
 
 public class CreateIndexQuery extends BaseDBQuery {
 	String idxName;
 	String collectionName;
-//	List<CollectionColumn> idxColumns = new ArrayList<CollectionColumn>();
-	CreateIndexStmt stmt;
+	List<String> colList = new ArrayList<>();
+	boolean unique = false;
+	String storageName = null;
 	
-	public CreateIndexQuery(String query, CreateIndexStmt stmt) {
-		super(query, -1, null);
-		this.stmt = stmt;
-		idxName = stmt.idxName;
-		collectionName = stmt.table;
+	public CreateIndexQuery(String q, Node qry) {
+		super(q, (SimpleNode) qry, -1, null);
+		SimpleNode query = (SimpleNode) qry;
+		SimpleNode node = SimpleNodeHelper.getInstance().getFirstNode(query, UQLParserTreeConstants.JJTINDEXNAME);
+		if (node == null) {
+			throw new RuntimeException("Invalid syntax");
+		}
+		idxName = node.jjtGetFirstToken().image;
+		
+		node = SimpleNodeHelper.getInstance().getFirstNode(query, UQLParserTreeConstants.JJTTABLENAME);
+		if (node == null) {
+			throw new RuntimeException("Invalid syntax");
+		}
+		collectionName = node.jjtGetFirstToken().image;
+		
+		List<SimpleNode> colNameNodes = new ArrayList<>();
+		SimpleNodeHelper.getInstance().getNodes(query, UQLParserTreeConstants.JJTIDENTIFIER, colNameNodes);
+		if (colNameNodes.size() <= 0) {
+			throw new RuntimeException("Invalid syntax");
+		}
+		
+		for (int i = 0; i < colNameNodes.size(); i++) {
+			node = colNameNodes.get(i);
+			colList.add(node.jjtGetFirstToken().image);
+		}
+		
+		node = SimpleNodeHelper.getInstance().getFirstNode(query, UQLParserTreeConstants.JJTUNIQUE);
+		if (node != null) {
+			unique = true;
+		}
+		
+		node = SimpleNodeHelper.getInstance().getFirstNode(query, UQLParserTreeConstants.JJTSTORAGENAME);
+		if (node == null) {
+			storageName = StorageMetadata.getInstance().getDefaultFileName();
+		} else {
+			storageName = node.jjtGetFirstToken().image;
+		}
 	}
 	
 	public String getCollectionName() {
@@ -65,69 +100,53 @@ public class CreateIndexQuery extends BaseDBQuery {
 	}
 	
 	public void execute() throws InvalidCollectionNameException, InvalidIndexException {
-		List<CollectionColumn> idxColumns = new ArrayList<CollectionColumn>();
-		List<CollectionColumn> collectionColumns = new ArrayList<CollectionColumn>();
+		List<Integer> idxColumns = new ArrayList<Integer>();
+		List<ColumnNameMeta> collectionColumns = new ArrayList<>();
 		CollectionMetadata colMeta = SchemaMetadata.getInstance().getCollectionMetadata(collectionName);
 		if (colMeta == null) {
 			throw new InvalidIndexException("collection not created..." + collectionName);
 		}
 		
-		colMeta = SchemaMetadata.getInstance().getCollectionMetadata(collectionName);
-		CollectionColumn cc = null;
-		for (IndexCol idxCol : stmt.colList) {
-			String colName = idxCol.col;
-			String type = getType(idxCol.type);
-			String cName = colName;
-			if (colName.contains(":")) {
-				cName = extractColumnName(colName);
-				colName = colName.substring(1);
-				colName = colName.substring(0, colName.length()-1);
-//					type = "ss";
-				cc = new CollectionColumn(colMeta, cName, "ss", true, true);
-				collectionColumns.add(cc);
-				cc = new CollectionColumn(colMeta, colName, type, true, false);
-				idxColumns.add(cc);
-			} else {
-				cc = new CollectionColumn(colMeta, cName, type, true, true);
-				idxColumns.add(cc);
-			}
+		ColumnNameMeta cnm = null;
+		for (String idxCol : colList) {
+			String colName = idxCol;
+			cnm = new ColumnNameMeta();
+			cnm.setCollectioName(collectionName);
+			cnm.setColumnName(colName);
+			int type = colMeta.getColumnType(idxCol);
+			cnm.setColumnType(type);
+			collectionColumns.add(cnm);
+			idxColumns.add(cnm.getCoulmnId());
 		}
-		List<CollectionColumn> newColumns = new ArrayList<CollectionColumn>();
-		newColumns.addAll(colMeta.addColumns(collectionColumns));
-		newColumns.addAll(colMeta.addColumns(idxColumns));
-		Set<BlockPtr> pinnedBlocks = new HashSet<BlockPtr>();
+
+		List<ColumnNameMeta> newColumns = colMeta.addColumns(collectionColumns);
+		Set<Object> pinnedBlocks = new HashSet<>();
+		WonderDBList dbList = SchemaMetadata.getInstance().getCollectionMetadata(collectionName).getRecordList(new Shard(""));
 		if (newColumns.size() > 0) {
-			Map<ColumnType, DBType> map = new HashMap<ColumnType, DBType>();
-			for (int i = 0; i < newColumns.size(); i++) {
-				cc = newColumns.get(i);
-//				cc = SerializedCollectionMetadata.adjustId(cc);					
-				map.put(cc.getColumnType(), cc);
-			}
 			TransactionId txnId = LogManager.getInstance().startTxn();
 			try {
-				Shard shard = new Shard(1, "", "");
-				TableRecordManager.getInstance().updateTableRecord("metaCollection", map, shard, colMeta.getRecordId(), null, pinnedBlocks, txnId);
-				LogManager.getInstance().commitTxn(txnId);
-			} catch (InvalidCollectionNameException e) {
+				for (int i = 0; i < newColumns.size(); i++) {
+					ListRecord record = new ObjectListRecord(newColumns.get(i));
+					dbList.add(record, txnId, new ColumnSerializerMetadata(SerializerManager.COLUMN_NAME_META_TYPE), pinnedBlocks);
+				}
 			} finally {
+				LogManager.getInstance().commitTxn(txnId);
 				CacheEntryPinner.getInstance().unpin(pinnedBlocks, pinnedBlocks);
 			}
 		}
-		Index idx = new Index(idxName, collectionName, idxColumns, stmt.unique, true);
-		String storageFile = null;
-		if (stmt.storage != null && stmt.storage.length() > 0) {
-			stmt.storage = stmt.storage.substring(1, stmt.storage.length()-1);
-			storageFile = stmt.storage;
-		} else {
-			storageFile = WonderDBPropertyManager.getInstance().getSystemFile();			
-		}
+		IndexNameMeta inm = new IndexNameMeta();
+		inm.setCollectionName(collectionName);
+		inm.setIndexName(idxName);
+		inm.setColumnIdList(idxColumns);
+		inm.setUnique(unique);
+		inm.setAscending(true);
 
 		List<Shard> shards = ClusterManagerFactory.getInstance().getClusterManager().getShards(collectionName);
 		for (int i = 0; i < shards.size(); i++) {
-			SchemaMetadata.getInstance().add(idx, shards.get(i), storageFile);
+			SchemaMetadata.getInstance().createNewIndex(inm, storageName);
 		}
 		
-		ClusterManagerFactory.getInstance().getClusterManager().createIndex(collectionName, idxName, storageFile, idx.getColumnList(), idx.isUnique(), true);
+//		ClusterManagerFactory.getInstance().getClusterManager().createIndex(collectionName, idxName, storageFile, inm.g.getColumnList(), idx.isUnique(), true);
 	}
 	
 	public static String extractColumnName(String cName) {
@@ -144,21 +163,21 @@ public class CreateIndexQuery extends BaseDBQuery {
 		return null;
 	}
 
-	public static String getType(String s) {
+	public static int getType(String s) {
 		if (s.equals("int")) {
-			return "is";
+			return SerializerManager.INT;
 		}
 		if (s.equals("long")) {
-			return "ls";
+			return SerializerManager.LONG;
 		}
 		if (s.equals("float")) {
-			return "fs";
+			return SerializerManager.FLOAT;
 		}
 		if (s.equals("double")) {
-			return "ds";
+			return SerializerManager.DOUBLE;
 		}
 		if (s.equals("string")) {
-			return "ss";
+			return SerializerManager.STRING;
 		}
 		throw new RuntimeException("Invalid type");
 	}

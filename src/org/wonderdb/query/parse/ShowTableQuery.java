@@ -1,3 +1,5 @@
+package org.wonderdb.query.parse;
+
 /*******************************************************************************
  *    Copyright 2013 Vilas Athavale
  *
@@ -13,30 +15,39 @@
  *    See the License for the specific language governing permissions and
  *    limitations under the License.
  *******************************************************************************/
-package org.wonderdb.query.parse;
 
-import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 
+import org.wonderdb.cluster.Shard;
 import org.wonderdb.expression.AndExpression;
-import org.wonderdb.parser.UQLParser.ShowIndexStmt;
-import org.wonderdb.parser.UQLParser.ShowTableStmt;
-import org.wonderdb.schema.CollectionColumn;
+import org.wonderdb.metadata.StorageMetadata;
+import org.wonderdb.parser.ShowIndexStmt;
+import org.wonderdb.parser.jtree.SimpleNode;
+import org.wonderdb.parser.jtree.SimpleNodeHelper;
+import org.wonderdb.parser.jtree.UQLParserTreeConstants;
 import org.wonderdb.schema.CollectionMetadata;
-import org.wonderdb.schema.IndexMetadata;
 import org.wonderdb.schema.SchemaMetadata;
-import org.wonderdb.types.impl.ColumnType;
+import org.wonderdb.types.ColumnNameMeta;
+import org.wonderdb.types.IndexNameMeta;
 
 
 public class ShowTableQuery extends BaseDBQuery {
 	String collectionName;
 	
-	public ShowTableQuery(String query, ShowTableStmt stmt){
-		super(query, -1, null);
-		collectionName = stmt.tableName;
+	public ShowTableQuery(String q, SimpleNode query) {
+		super(q, query, -1, null);
+		SimpleNode node = SimpleNodeHelper.getInstance().getFirstNode(query, UQLParserTreeConstants.JJTTABLENAME);
+		if (node == null) {
+			throw new RuntimeException("Invalid syntax:");
+		}
+		collectionName = node.jjtGetFirstToken().image;
 	}
 	
+	public ShowTableQuery(String q, String tableName) {
+		super(q, null, -1, null);
+		collectionName = tableName;
+	}
 	
 	public String execute() {
 		CollectionMetadata colMeta = SchemaMetadata.getInstance().getCollectionMetadata(collectionName);
@@ -45,29 +56,27 @@ public class ShowTableQuery extends BaseDBQuery {
 		}
 		StringBuilder builder = new StringBuilder();
 		
-		List<ColumnType> cols = new ArrayList<ColumnType>(colMeta.getQueriableColumns().keySet());
-		Iterator<ColumnType> iter = cols.iterator();
+		byte fileId = colMeta.getRecordList(new Shard("")).getHead().getFileId();
+		String storage = StorageMetadata.getInstance().getFileName(fileId);
+		
+		List<ColumnNameMeta> cols = colMeta.getCollectionColumns();
+		Iterator<ColumnNameMeta> iter = cols.iterator();
 		while (iter.hasNext()) {
-			ColumnType ct = iter.next();
-			CollectionColumn cc = colMeta.getCollectionColumn((Integer) ct.getValue());
-			if (cc.isQueriable()) {
-				builder.append(colMeta.getColumnName((Integer) ct.getValue()) )
-				.append("\t")
-				.append(getType(colMeta.getColumnSerializerName(ct)))
-				.append("\n");
-			}
+			ColumnNameMeta ct = iter.next();
+			builder.append(ct.getColumnName()).append("\t");
+			builder.append(ct.getColumnType());
 		}
 		
 		builder.append("\n");
-		builder.append("STORAGE: ").append("\n");
+		builder.append("STORAGE: ").append(storage).append("\n");
 		builder.append("\n");
 
-		List<IndexMetadata> list = SchemaMetadata.getInstance().getIndexes(collectionName);
-		for (IndexMetadata idxMeta : list) {
+		List<IndexNameMeta> list = SchemaMetadata.getInstance().getIndexes(collectionName);
+		for (IndexNameMeta idxMeta : list) {
 			builder.append("\n");
 			ShowIndexStmt stmt = new ShowIndexStmt();
-			stmt.indexName = idxMeta.getName();
-			ShowIndexQuery q = new ShowIndexQuery(stmt);
+			stmt.indexName = idxMeta.getIndexName();
+			ShowIndexQuery q = new ShowIndexQuery(getQueryString(), stmt);
 			builder.append(q.execute());
 		}
 		return builder.toString();

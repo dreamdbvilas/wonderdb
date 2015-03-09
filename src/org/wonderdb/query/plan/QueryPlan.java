@@ -1,3 +1,5 @@
+package org.wonderdb.query.plan;
+
 /*******************************************************************************
  *    Copyright 2013 Vilas Athavale
  *
@@ -13,22 +15,20 @@
  *    See the License for the specific language governing permissions and
  *    limitations under the License.
  *******************************************************************************/
-package org.wonderdb.query.plan;
 
 import java.util.List;
 import java.util.Set;
 
 import org.wonderdb.block.Block;
 import org.wonderdb.cluster.Shard;
-import org.wonderdb.collection.ResultIterator;
-import org.wonderdb.types.impl.ColumnType;
+import org.wonderdb.core.collection.ResultIterator;
+import org.wonderdb.query.parse.CollectionAlias;
 
 
 
 public interface QueryPlan {
 	CollectionAlias getCollectionAlias();
-	
-	ResultIterator iterator(DataContext dataContext, Shard shard, List<ColumnType> selectColumns, boolean writeLock);
+	ResultIterator iterator(DataContext dataContext, Shard shard, List<Integer> selectColumns, boolean writeLock);
 	boolean continueOnMiss();
 	void setDependentCollections(Set<CollectionAlias> s);
 	Block getCurrentBlock();

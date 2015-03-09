@@ -1,3 +1,5 @@
+package org.wonderdb.query.plan;
+
 /*******************************************************************************
  *    Copyright 2013 Vilas Athavale
  *
@@ -13,26 +15,32 @@
  *    See the License for the specific language governing permissions and
  *    limitations under the License.
  *******************************************************************************/
-package org.wonderdb.query.plan;
 
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
 
-import org.wonderdb.block.record.manager.RecordId;
 import org.wonderdb.collection.ResultContent;
+import org.wonderdb.query.parse.CollectionAlias;
+import org.wonderdb.schema.CollectionMetadata;
+import org.wonderdb.schema.SchemaMetadata;
+import org.wonderdb.schema.WonderDBFunction;
 import org.wonderdb.types.DBType;
-import org.wonderdb.types.impl.ColumnType;
+import org.wonderdb.types.RecordId;
+
 
 
 public class DataContext {
+	Map<Integer, DBType> globalContext = new HashMap<Integer, DBType>();
 	Map<CollectionAlias, ResultContent> map = new HashMap<CollectionAlias, ResultContent>(); 
 
 	public DataContext() {
 	}
 	
 	public DataContext(DataContext context) {
-		map = new HashMap<CollectionAlias, ResultContent>(context.map);
+		// copy only global context
+//		map = new HashMap<CollectionAlias, ResultContent>(context.map);
+		globalContext = context.globalContext;
 	}
 	
 	public void add(CollectionAlias ca, ResultContent trt) {
@@ -43,12 +51,21 @@ public class DataContext {
 		map.remove(ca);
 	}
 	
-	public Map<ColumnType, DBType> getAllColumns(CollectionAlias ca) {
-		ResultContent resultContent = map.get(ca);
-		return resultContent.getAllColumns(); 
+//	public Map<Integer, DBType> getAllColumns(CollectionAlias ca) {
+//		ResultContent resultContent = map.get(ca);
+//		return resultContent.getAllColumns(); 
+//	}
+	
+	public DBType getGlobalValue(Integer ct) {
+		return globalContext.get(ct);
 	}
 	
-	public DBType getValue(CollectionAlias ca, ColumnType columnName, String path) {
+	public void processFunction(WonderDBFunction fn) {
+		DBType dt = fn.process(this);
+		globalContext.put(fn.getColumnType(), dt);
+	}
+	
+	public DBType getValue(CollectionAlias ca, Integer columnName, String path) {
 //		Queriable trt = map.get(ca);
 //		if (trt == null) {
 //			return null;
@@ -56,9 +73,15 @@ public class DataContext {
 //		return trt.getColumnValue(columnName);
 		ResultContent rc = map.get(ca);
 		if (rc != null) {
-			return rc.getValue(columnName, path);
+			return rc.getValue(columnName);
 		}
 		return null;
+	}
+	
+	public DBType getValue(CollectionAlias ca, String columnName, String path) {
+		CollectionMetadata colMetadata = SchemaMetadata.getInstance().getCollectionMetadata(ca.getCollectionName());
+		Integer ct = colMetadata.getColumnId(columnName);
+		return getValue(ca, ct, path);
 	}
 	
 	public RecordId get(CollectionAlias ca) {
@@ -78,7 +101,7 @@ public class DataContext {
 		
 		while (iter.hasNext()) {
 			CollectionAlias ca = iter.next();
-			b.append("Collection Name = "+ca.collectionName+"\n");
+			b.append("Collection Name = "+ca.getCollectionName()+"\n");
 //			RecordId trt = map.get(ca);
 //			trt.toString();
 		}

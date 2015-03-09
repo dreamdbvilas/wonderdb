@@ -1,3 +1,7 @@
+package org.wonderdb.cache;
+
+import org.wonderdb.cache.impl.CacheEntryPinner;
+
 /*******************************************************************************
  *    Copyright 2013 Vilas Athavale
  *
@@ -13,7 +17,6 @@
  *    See the License for the specific language governing permissions and
  *    limitations under the License.
  *******************************************************************************/
-package org.wonderdb.cache;
 
 
 public class Pinner implements PinnerMBean {

@@ -1,3 +1,4 @@
+package org.wonderdb.file;
 /*******************************************************************************
  *    Copyright 2013 Vilas Athavale
  *
@@ -13,18 +14,29 @@
  *    See the License for the specific language governing permissions and
  *    limitations under the License.
  *******************************************************************************/
-package org.wonderdb.file;
 
+import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.nio.ByteBuffer;
+import java.nio.channels.AsynchronousFileChannel;
 import java.nio.channels.FileChannel;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.nio.file.StandardOpenOption;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.Map;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.BlockingQueue;
+
+import org.wonderdb.types.FileBlockEntry;
 
 public class FilePointerFactory {
-	private Map<String, RandomAccessFile> fileMap = new HashMap<String, RandomAccessFile>();
-	private Map<String, RandomAccessFile> channelMap = new HashMap<String, RandomAccessFile>();
+	private Map<Byte, BlockingQueue<AsynchronousFileChannel>> asyncChannelMap = new HashMap<>();
+	private Map<Byte, BlockingQueue<FileChannel>> syncChannelMap = new HashMap<>();
+	private Map<Byte, RandomAccessFile> fileMap = new HashMap<>();
+	
 	private static FilePointerFactory pool = new FilePointerFactory();
 	
 	private FilePointerFactory() {
@@ -34,119 +46,183 @@ public class FilePointerFactory {
 		return pool;
 	}
 	
-	private synchronized RandomAccessFile getRawFilePointer(String fileName) {
-		RandomAccessFile file = fileMap.get(fileName);
-		if (file == null) {
+	public void create(FileBlockEntry entry) {
+		BlockingQueue<AsynchronousFileChannel> q = new ArrayBlockingQueue<>(5);
+		asyncChannelMap.put(entry.getFileId(), q);
+		for (int i = 0; i < 5; i++) {
+			Path path = Paths.get(entry.getFileName());
+			AsynchronousFileChannel afc = null;
 			try {
-				file = new RandomAccessFile(fileName, "rw");
-				fileMap.put(fileName, file);
+				afc = AsynchronousFileChannel.open(path, StandardOpenOption.READ, StandardOpenOption.WRITE, StandardOpenOption.CREATE);
 			} catch (IOException e) {
+				e.printStackTrace();
+				throw new RuntimeException(e);
 			}
+			q.add(afc);
 		}
-		return file;
-	}
-	
-	
-	public synchronized void close(String fileName, RandomAccessFile file) {
-		if (file == null || fileName == null || fileName.length() == 0) {
-			return;
+		
+		BlockingQueue<FileChannel> q1 = new ArrayBlockingQueue<>(5);
+		syncChannelMap.put(entry.getFileId(), q1);
+		for (int i = 0; i < 5; i++) {
+			Path path = Paths.get(entry.getFileName());
+			FileChannel fc = null;
+			try {
+				fc = FileChannel.open(path, StandardOpenOption.READ, StandardOpenOption.WRITE, StandardOpenOption.CREATE);
+			} catch (IOException e) {
+				e.printStackTrace();
+				throw new RuntimeException(e);
+			}
+			q1.add(fc);
 		}
+		
 		try {
-			file.close();
-		} catch (IOException e) {
+			RandomAccessFile raf = new RandomAccessFile(entry.getFileName(), "rw");
+			if (raf.length() < entry.getBlockSize()*100) {
+				raf.setLength(entry.getBlockSize()*100);
+			}
+			fileMap.put(entry.getFileId(), raf);
+		} catch (FileNotFoundException e) {
+		} catch (IOException e1) {
+			
 		}
-		fileMap.remove(fileName);
 	}
 	
-	private FileChannel getChannel(String fileName) {
-		RandomAccessFile file = channelMap.get(fileName);
-		if (file == null) {
-			synchronized (this) {
-				if (!channelMap.containsKey(file)) {
-					try {
-						file = new RandomAccessFile(fileName, "rw");
-					} catch (IOException e) {
-					}
-					channelMap.put(fileName, file);
+	public synchronized void closAll() {
+		Iterator<BlockingQueue<AsynchronousFileChannel>> iter = asyncChannelMap.values().iterator();
+		while (iter.hasNext()) {
+			BlockingQueue<AsynchronousFileChannel> asyncChannels = iter.next();
+			AsynchronousFileChannel afc = null;
+			for (int closed = 0; closed < 5; closed++) {
+				try {
+					afc = asyncChannels.take();
+				} catch (InterruptedException e1) {
+					// TODO Auto-generated catch block
+					e1.printStackTrace();
+				}
+				try {
+					afc.close();
+				} catch (IOException e) {
+					// TODO Auto-generated catch block
+					e.printStackTrace();
 				}
 			}
 		}
-		return file.getChannel();
+		
+		Iterator<BlockingQueue<FileChannel>> syncIter = syncChannelMap.values().iterator();
+		while (syncIter.hasNext()) {
+			BlockingQueue<FileChannel> syncChannels = syncIter.next();
+			for (int closed = 0; closed < 5; closed++) {
+				FileChannel fc = null;;
+				try {
+					fc = syncChannels.take();
+				} catch (InterruptedException e1) {
+					// TODO Auto-generated catch block
+					e1.printStackTrace();
+				}
+				try {
+					fc.close();
+				} catch (IOException e) {
+					// TODO Auto-generated catch block
+					e.printStackTrace();
+				}
+			}
+		}
 	}
 	
-//	public byte[] readFile(RandomAccessFile file, int count) {
-//		byte[] bytes = new byte[count];
-//		int posn = 0;
-//		int readCount = 0;
-//		while (readCount != count) {
-//			byte[] b = new byte[count];
-//			try {
-//				int c = file.read(b);
-//				if (c < 0) {
-//					break;
-//				}
-//				readCount = readCount + c;
-//				for (int i = 0; i < c; i++) {
-//					bytes[posn++] = b[i]; 
-//				}
-//			} catch (IOException e) {
-//			}
-//		}
-//		return bytes;
-//	}
-//	
-	public void writeFile(String fileName, long posn, ByteBuffer buffer) throws IOException {
-		RandomAccessFile file = getRawFilePointer(fileName);
-		file.seek(posn);
-		file.write(buffer.array());
+	public void writeChannel(byte fileId, long posn, ByteBuffer buffer) throws IOException {
+		BlockingQueue<FileChannel> q = syncChannelMap.get(fileId);
+		FileChannel fc;
+		try {
+			fc = q.take();
+			fc.write(buffer, posn);
+			q.add(fc);
+		} catch (InterruptedException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
 	}
 	
-	public void writeChannel(String fileName, long posn, ByteBuffer buffer) throws IOException {
-		FileChannel channel = getChannel(fileName);
-		channel.write(buffer, posn);
-		channel.force(true);
+	public void readChannel(byte fileId, long posn, ByteBuffer buffer) throws IOException {
+		readChannel(fileId, posn, 0, buffer);
 	}
 	
-	public void readChannel(String fileName, long posn, ByteBuffer buffer) throws IOException {
-		readChannel(fileName, posn, 0, buffer);
-	}
-	
-	public void readChannel(String fileName, long posn, long sleep, ByteBuffer buffer) throws IOException {
+	public void readChannel(byte fileId, long posn, long sleep, ByteBuffer buffer) throws IOException {
 		if (sleep > 0) {
 			try {
 				Thread.sleep(sleep);
 			} catch (InterruptedException e) {
 			}
 		}
-		FileChannel channel = getChannel(fileName);
-		channel.read(buffer, posn);
-	}
-
-	public long getSize(String fileName) {
-		RandomAccessFile file = getRawFilePointer(fileName);
-		long len = -1;
+		BlockingQueue<FileChannel> q = syncChannelMap.get(fileId);
+		FileChannel fc;
 		try {
-			len = file.length();
-		} catch (IOException e) {
+			fc = q.take();
+			fc.read(buffer, posn);
+			q.add(fc);
+		} catch (InterruptedException e) {
+			// TODO Auto-generated catch block
 			e.printStackTrace();
 		}
-		return len;
 	}
 	
-	public void doubleSize(String fileName) {
-		RandomAccessFile file = getRawFilePointer(fileName);
+	AsynchronousFileChannel getAsyncChannel(byte fileId) {
+		BlockingQueue<AsynchronousFileChannel> q = asyncChannelMap.get(fileId);
 		try {
-			long len = file.length();
-			if (len >= 10000000000L) {
-				len = len + 10000000000L;
-			} else if (len >= 500000) {
-				len = len * 2;
-			} else {
-				len = 500000;				
-			}
-			file.setLength(len);
-		} catch (IOException e) {
+			AsynchronousFileChannel c = q.take();
+			return c;
+		} catch (InterruptedException e) {
+			// TODO Auto-generated catch block
 			e.printStackTrace();
 		}
+		return null;
 	}
+	
+	void returnAsyncChannel(byte fileId, AsynchronousFileChannel channel) {
+		BlockingQueue<AsynchronousFileChannel> q = asyncChannelMap.get(fileId);
+		q.add(channel);
+	}
+	
+	public long increaseSizeBy(byte fileId, long size) {
+		RandomAccessFile raf = fileMap.get(fileId);
+		long currentSize = -1;
+		synchronized (raf) {
+			try {
+				currentSize = raf.length();
+				raf.setLength(currentSize+size);
+				long len = raf.length();
+				int i = 0;
+			} catch (IOException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			}
+		}
+		return currentSize;
+	}
+//	
+//	public void doubleSize(String fileName) {
+//		RandomAccessFile file = getRawFilePointer(fileName);
+//		try {
+//			long len = file.length();
+//			if (len >= 10000000000L) {
+//				len = len + 10000000000L;
+//			} else if (len >= 500000) {
+//				len = len * 2;
+//			} else {
+//				len = 500000;				
+//			}
+//			file.setLength(len);
+//		} catch (IOException e) {
+//			e.printStackTrace();
+//		}
+//	}
+//	
+//	public static void main(String[] args) throws Exception {
+//		RandomAccessFile raf = new RandomAccessFile("vvv", "rw");
+//		RandomAccessFile raf1 = new RandomAccessFile("vvv", "rw");
+//		AsynchronousFileChannel afc = AsynchronousFileChannel.open("vvv", StandardOpenOption.READ, StandardOpenOption.WRITE, StandardOpenOption.CREATE);
+//		ByteBuffer buffer = ByteBuffer.allocate(100);
+//		buffer.put("vilas".getBytes());
+//		raf.getChannel().write(buffer, 0);
+//		raf1.getChannel().write(buffer, 2000);
+//	}
 }

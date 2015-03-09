@@ -4,10 +4,8 @@ import java.util.List;
 
 import org.wonderdb.cluster.ClusterManager;
 import org.wonderdb.cluster.ClusterManagerFactory;
-import org.wonderdb.cluster.Shard;
-import org.wonderdb.collection.exceptions.InvalidCollectionNameException;
-import org.wonderdb.collection.exceptions.InvalidIndexException;
-import org.wonderdb.file.FileBlockManager;
+import org.wonderdb.exception.InvalidCollectionNameException;
+import org.wonderdb.types.ColumnNameMeta;
 
 public class ClusterSchemaManager {
 	private static ClusterSchemaManager instance = new ClusterSchemaManager();
@@ -15,7 +13,7 @@ public class ClusterSchemaManager {
 		return instance;
 	}
 	
-	public void createCollection(String collectionName, String storage, List<CollectionColumn> idxColumns, 
+	public void createCollection(String collectionName, String storage, List<ColumnNameMeta> idxColumns, 
 			boolean shouldCreateClusterObjects) throws InvalidCollectionNameException {
 		CollectionMetadata colMeta = SchemaMetadata.getInstance().getCollectionMetadata(collectionName);
 		if (colMeta == null) {
@@ -24,28 +22,28 @@ public class ClusterSchemaManager {
 			if (shouldCreateClusterObjects) {
 				clusterManager.createCollection(collectionName, fileName, true, idxColumns, null);
 			}
-			colMeta = SchemaMetadata.getInstance().addCollectionForDefaultShard(collectionName, fileName, idxColumns);			
-			fileName = FileBlockManager.getInstance().getDefaultFileName();
-			idxColumns.clear();
-			idxColumns.add(new CollectionColumn(colMeta, "objectId", "ss"));
-			Index idx;
-			try {
-				idx = new Index  ("objectId"+collectionName, collectionName, idxColumns, true, true);
-				List<Shard> shards = ClusterManagerFactory.getInstance().getClusterManager().getShards(collectionName);
-				for (int i = 0; i < shards.size(); i++) {
-					SchemaMetadata.getInstance().add(idx, shards.get(i));
-				}
-			} catch (InvalidIndexException e) {
-				throw new RuntimeException(e);
-			}
+			colMeta = SchemaMetadata.getInstance().createNewCollection(collectionName, fileName, idxColumns, 10);		
+//			fileName = FileBlockManager.getInstance().getDefaultFileName();
+//			idxColumns.clear();
+//			idxColumns.add(new CollectionColumn(colMeta, "objectId", "ss"));
+//			Index idx;
+//			try {
+//				idx = new Index  ("objectId"+collectionName, collectionName, idxColumns, true, true);
+//				List<Shard> shards = ClusterManagerFactory.getInstance().getClusterManager().getShards(collectionName);
+//				for (int i = 0; i < shards.size(); i++) {
+//					SchemaMetadata.getInstance().add(idx, shards.get(i));
+//				}
+//			} catch (InvalidIndexException e) {
+//				throw new RuntimeException(e);
+//			}
 
-			if (shouldCreateClusterObjects) {
-				try {
-					clusterManager.createIndex(collectionName, "objectId" + collectionName, fileName, idxColumns, true, true);
-				} catch (InvalidIndexException e) {
-					throw new RuntimeException(e);
-				}
-			}
+//			if (shouldCreateClusterObjects) {
+//				try {
+//					clusterManager.createIndex(collectionName, "objectId" + collectionName, fileName, idxColumns, true, true);
+//				} catch (InvalidIndexException e) {
+//					throw new RuntimeException(e);
+//				}
+//			}
 		} else {
 			throw new InvalidCollectionNameException("");
 		}

@@ -1,3 +1,12 @@
+package org.wonderdb.expression;
+
+import java.util.Set;
+
+import org.wonderdb.types.DBType;
+import org.wonderdb.types.IndexKeyType;
+import org.wonderdb.types.TypeMetadata;
+import org.wonderdb.types.record.TableRecord;
+
 /*******************************************************************************
  *    Copyright 2013 Vilas Athavale
  *
@@ -13,14 +22,9 @@
  *    See the License for the specific language governing permissions and
  *    limitations under the License.
  *******************************************************************************/
-package org.wonderdb.expression;
 
-import org.wonderdb.block.record.table.TableRecord;
-import org.wonderdb.schema.Index;
-import org.wonderdb.types.DBType;
-import org.wonderdb.types.impl.IndexKeyType;
 
 public interface Operand {
-	Comparable<DBType> getValue(Index idx, IndexKeyType value);
-	Comparable<DBType> getValue(TableRecord value);
+	DBType getValue(IndexKeyType value, TypeMetadata meta);
+	DBType getValue(TableRecord value, TypeMetadata meta, Set<Object> pinnedBlocks);
 }

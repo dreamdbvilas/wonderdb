@@ -1,3 +1,13 @@
+package org.wonderdb.expression;
+
+import org.wonderdb.query.parse.CollectionAlias;
+import org.wonderdb.query.parse.DBInsertQuery;
+import org.wonderdb.query.parse.StaticOperand;
+import org.wonderdb.schema.CollectionMetadata;
+import org.wonderdb.schema.SchemaMetadata;
+import org.wonderdb.types.DBType;
+import org.wonderdb.types.StringType;
+
 /*******************************************************************************
  *    Copyright 2013 Vilas Athavale
  *
@@ -13,8 +23,6 @@
  *    See the License for the specific language governing permissions and
  *    limitations under the License.
  *******************************************************************************/
-package org.wonderdb.expression;
-
 
 
 public class BasicExpression implements Expression {
@@ -29,6 +37,27 @@ public class BasicExpression implements Expression {
 		this.left = left;
 		this.right = right;
 		this.operator = operator;
+		if (left instanceof StaticOperand) {
+			if (right instanceof VariableOperand) {
+				CollectionAlias ca = ((VariableOperand) right).getCollectionAlias();
+				int colId = ((VariableOperand) right).getColumnId();
+				CollectionMetadata colMeta = SchemaMetadata.getInstance().getCollectionMetadata(ca.getCollectionName());
+				int type = colMeta.getCollectionColumn(colId).getColumnType();
+				DBType val = DBInsertQuery.convertToDBType(left.getValue(null, null), type);
+				this.left = new StaticOperand(val);
+			}
+		}
+
+		if (right instanceof StaticOperand) {
+			if (left instanceof VariableOperand) {
+				CollectionAlias ca = ((VariableOperand) left).getCollectionAlias();
+				int colId = ((VariableOperand) left).getColumnId();
+				CollectionMetadata colMeta = SchemaMetadata.getInstance().getCollectionMetadata(ca.getCollectionName());
+				int type = colMeta.getCollectionColumn(colId).getColumnType();
+				DBType val = DBInsertQuery.convertToDBType((StringType) right.getValue(null, null), type);
+				this.right = new StaticOperand(val);
+			}
+		}
 	}	
 	
 	public Operand getLeftOperand() {

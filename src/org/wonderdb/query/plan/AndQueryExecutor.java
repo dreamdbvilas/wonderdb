@@ -1,3 +1,5 @@
+package org.wonderdb.query.plan;
+
 /*******************************************************************************
  *    Copyright 2013 Vilas Athavale
  *
@@ -13,34 +15,36 @@
  *    See the License for the specific language governing permissions and
  *    limitations under the License.
  *******************************************************************************/
-package org.wonderdb.query.plan;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-import org.wonderdb.block.BlockPtr;
-import org.wonderdb.block.record.RecordBlock;
-import org.wonderdb.block.record.manager.RecordId;
-import org.wonderdb.block.record.table.TableRecord;
-import org.wonderdb.cache.CacheEntryPinner;
-import org.wonderdb.cache.CacheObjectMgr;
+import org.wonderdb.block.BlockManager;
+import org.wonderdb.block.ListBlock;
+import org.wonderdb.cache.impl.CacheEntryPinner;
 import org.wonderdb.cluster.Shard;
 import org.wonderdb.collection.IndexResultContent;
 import org.wonderdb.collection.ResultContent;
-import org.wonderdb.collection.ResultIterator;
 import org.wonderdb.collection.StaticTableResultContent;
-import org.wonderdb.collection.ValueNotAvailableException;
-import org.wonderdb.expression.BasicExpression;
-import org.wonderdb.expression.Operand;
-import org.wonderdb.expression.StaticOperand;
-import org.wonderdb.expression.VariableOperand;
+import org.wonderdb.core.collection.ResultIterator;
+import org.wonderdb.parser.jtree.QueryEvaluator;
+import org.wonderdb.parser.jtree.SimpleNode;
+import org.wonderdb.query.parse.CollectionAlias;
 import org.wonderdb.schema.SchemaMetadata;
+import org.wonderdb.serialize.ColumnSerializer;
+import org.wonderdb.serialize.record.RecordSerializer;
+import org.wonderdb.types.ColumnSerializerMetadata;
 import org.wonderdb.types.DBType;
-import org.wonderdb.types.impl.ColumnType;
-import org.wonderdb.types.impl.StringType;
+import org.wonderdb.types.Extended;
+import org.wonderdb.types.RecordId;
+import org.wonderdb.types.StringType;
+import org.wonderdb.types.TableRecordMetadata;
+import org.wonderdb.types.record.TableRecord;
+
 
 
 
@@ -53,16 +57,16 @@ public class AndQueryExecutor {
 		return instance;
 	}
 	
-	public void execute(Shard shard, List<QueryPlan> plan, List<BasicExpression> expList, boolean writeLock,
-			List<CollectionAlias> fromList, Map<CollectionAlias, List<ColumnType>> selectColumnNames,
+	public void executeTree(Shard shard, List<QueryPlan> plan, SimpleNode tree, boolean writeLock,
+			List<CollectionAlias> fromList, Map<String, CollectionAlias> fromMap, Map<CollectionAlias, List<Integer>> selectColumnNames,
 			List<Map<CollectionAlias, RecordId>> resultsList, List<Map<CollectionAlias, String>> slaveResultsList, boolean masterQuery) {
 //		List<Map<CollectionAlias, RecordId>> results = new ArrayList<Map<CollectionAlias,RecordId>>();
-		nestedLoop1(shard, plan, 0, null, expList, writeLock, fromList, selectColumnNames, resultsList, slaveResultsList, masterQuery);
+		nestedLoop2(shard, plan, 0, null, tree, writeLock, fromList, fromMap, selectColumnNames, resultsList, slaveResultsList, masterQuery);
 	}
-
-	private void nestedLoop1(Shard shard, List<QueryPlan> plan, int posn, DataContext context, 
-			List<BasicExpression> expList, boolean writeLock,
-			List<CollectionAlias> fromList, Map<CollectionAlias, List<ColumnType>> selectColumnNames,
+	
+	private void nestedLoop2(Shard shard, List<QueryPlan> plan, int posn, DataContext context, 
+			SimpleNode tree, boolean writeLock,
+			List<CollectionAlias> fromList, Map<String, CollectionAlias> fromMap, Map<CollectionAlias, List<Integer>> selectColumnNames,
 			List<Map<CollectionAlias, RecordId>> resultsList, List<Map<CollectionAlias, String>> slaveResultsList, boolean masterQuery) {
 	
 		if (posn == 0) {
@@ -73,40 +77,64 @@ public class AndQueryExecutor {
 			return;
 		}
 		ResultIterator iter = null;
-		RecordBlock lockedBlock = null;
+		ListBlock lockedBlock = null;
 		try {
 			iter = plan.get(posn).iterator(context, shard, selectColumnNames.get(posn), writeLock);
+			String schemaObjectName = plan.get(posn).getCollectionAlias().getCollectionName();
 			while (iter.hasNext()) {
-				ResultContent resultContent = iter.next();
-				context.add(plan.get(posn).getCollectionAlias(), resultContent);
+				CollectionAlias ca = plan.get(posn).getCollectionAlias();
+				ResultContent resultContent = (ResultContent) iter.next();
+//				ResultContent resultContent = getResultContent(record, iter.getTypeMetadata());
+				context.add(ca, resultContent);
 				boolean filter;
-				filter = filter(context, expList);
+				filter = filterTree(context, tree, fromMap);
 				if (filter) {
 					if (resultContent instanceof IndexResultContent) {
-						context.map.remove(plan.get(posn).getCollectionAlias());
-						String collectionName = fromList.get(posn).getCollectionName();
-						int schemaId = SchemaMetadata.getInstance().getCollectionMetadata(collectionName).getSchemaId();
-						Set<BlockPtr> pinnedBlock = new HashSet<BlockPtr>();
+						context.map.remove(ca);
+						Set<Object> pinnedBlock = new HashSet<>();
 						try {
-							lockedBlock = CacheObjectMgr.getInstance().getRecordBlockWithHeaderLoaded(resultContent.getRecordId().getPtr(), schemaId, pinnedBlock);
-							lockedBlock.readLock();
-							TableRecord tr = (TableRecord) CacheObjectMgr.getInstance().getRecord(lockedBlock, resultContent.getRecordId(), 
-									selectColumnNames.get(posn), schemaId, pinnedBlock);
-							StaticTableResultContent strc = new StaticTableResultContent(tr, resultContent.getRecordId(), schemaId);
-							context.map.put(plan.get(posn).getCollectionAlias(), strc);
-							filter = filter(context, expList);
+							List<Integer> columnsToFetchFromTable = new ArrayList<>();
+							List<Integer> colIdList = selectColumnNames.get(ca);
+							for (int i = 0; i < colIdList.size(); i++) {
+								int colId = colIdList.get(i);
+								if (!resultContent.getAllColumns().containsKey(colId)) {
+									columnsToFetchFromTable.add(colId);
+								}
+							}
+							if (columnsToFetchFromTable.size() > 0) {
+								try {
+									TableRecordMetadata meta = (TableRecordMetadata) SchemaMetadata.getInstance().getTypeMetadata(schemaObjectName);
+									lockedBlock = (ListBlock) BlockManager.getInstance().getBlock(resultContent.getRecordId().getPtr(), meta, pinnedBlock);
+									lockedBlock.readLock();
+									TableRecord tr = (TableRecord) lockedBlock.getRecord(resultContent.getRecordId().getPosn());
+									if (tr instanceof Extended) {
+										RecordSerializer.getInstance().readFull(tr, meta, pinnedBlock);
+									}
+									for (int i = 0; i < columnsToFetchFromTable.size(); i++) {
+										int colId = colIdList.get(i);
+										DBType column = tr.getColumnMap().get(colId);
+										if (column instanceof Extended) {
+											ColumnSerializer.getInstance().readFull(column, new ColumnSerializerMetadata(meta.getColumnIdTypeMap().get(colId)), pinnedBlock);
+										}
+									}
+									resultContent = new StaticTableResultContent(tr);
+								} finally {
+									lockedBlock.readUnlock();									
+								}
+							}
+							context.map.put(ca, resultContent);
+							filter = filterTree(context, tree, fromMap);
 							if (!filter) {
 								continue;
 							}
 						} finally {
-							lockedBlock.readUnlock();
 							CacheEntryPinner.getInstance().unpin(pinnedBlock, pinnedBlock);
 						}
 					}
 					if (posn < plan.size()) {
 						int p = posn+1;
 						if (p < plan.size()) {
-							nestedLoop1(shard, plan, p, context, expList, writeLock, fromList, selectColumnNames, resultsList, slaveResultsList, masterQuery);
+							nestedLoop2(shard, plan, p, context, tree, writeLock, fromList, fromMap, selectColumnNames, resultsList, slaveResultsList, masterQuery);
 						} else {
 							Map<CollectionAlias, RecordId> masterMap = null;
 							Map<CollectionAlias, String> slaveMap = null;
@@ -117,28 +145,21 @@ public class AndQueryExecutor {
 								slaveMap = new HashMap<CollectionAlias, String>();
 							}
 							for (int i = 0; i < plan.size(); i++) {
-								CollectionAlias ca = plan.get(i).getCollectionAlias();
+								ca = plan.get(i).getCollectionAlias();
 								
 								RecordId recId = context.get(ca);
 //								recId = resultContent.get();
 								if (masterQuery) {
 									masterMap.put(ca, recId);
-									resultsList.add(masterMap);
 								} else {
-									StringType objectId = (StringType) context.getValue(ca, new ColumnType(0), null);
+									StringType objectId = (StringType) context.getValue(ca, 0, null);
 									slaveMap.put(ca, objectId.get());
 									slaveResultsList.add(slaveMap);
 								}
 							}
+							resultsList.add(masterMap);
 						}
 					} 
-//					if (posn == plan.size()-1){
-//						if (trMapList != null) {
-//							Map<CollectionAlias, TableRecord> trMap = new HashMap<CollectionAlias, TableRecord>();
-//							filter(context, fromList, selectColumnNames, trMap);
-//							trMapList.add(trMap);
-//						}
-//					}
 				} else if (plan.get(posn).continueOnMiss()){
 					continue;
 				} else {
@@ -153,137 +174,12 @@ public class AndQueryExecutor {
 		}
 	}
 	
-//	private List<DataContext> nestedLoop(List<QueryPlan> plan, List<BasicExpression> expList, boolean writeLock) {
-//		DataContext dataContext = new DataContext();		
-//		List<DataContext> result = new ArrayList<DataContext>();
-//		List<ResultIterator> iters = new ArrayList<ResultIterator>(plan.size());
-//		
-//		// lets lock trees in proper order
-//		Set<String> set = new HashSet<String>();
-//		for (int i = 0; i < plan.size(); i++) {
-//			QueryPlan p = plan.get(i);
-//			if (p instanceof IndexRangeScan) {
-//				set.add(((IndexRangeScan) p).getIndex().getIndexName());
-//			}
-//		}
-//		
-//		Iterator<String> it = set.iterator();
-//		while (it.hasNext()) {
-//			SchemaMetadata.getInstance().getIndex(it.next()).getIndexTree().readLock();
-//		}
-//		int posn = 0;		
-//		iters.add(plan.get(0).iterator(dataContext, writeLock));
-//		
-//		while (true) {
-//			if (iters.get(posn).hasNext()) {
-//				// first clear all 
-//				if (posn == 0) {
-//					dataContext = new DataContext();
-//				}
-//				RecordId recordId = iters.get(posn).next();
-//				
-//				dataContext.add(plan.get(posn).getCollectionAlias(), recordId);
-//				boolean done = false;
-//				if (dataContext.map.size() == plan.size() ) {
-//					if (filter(dataContext, expList)) {
-//						DataContext tmp =  new DataContext();
-//						tmp.map = new HashMap<CollectionAlias, RecordId>(dataContext.map);;
-//						result.add(tmp);
-//						done = false;
-//					} else {
-//						if (!plan.get(posn).continueOnMiss()) {
-//							done = true;
-//						}
-//					}
-//				}
-//				if (done) {
-//					if (posn == 0) {
-//						break;
-//					}
-//					
-//					if ((posn+1)%plan.size() == 0) {
-//						posn--;
-//					} else {
-//						posn++;
-//					}					
-//				} else {
-//					if (((posn+1) % plan.size() != 0)) {
-//						iters.get(posn).unlock();
-//						posn++;
-//						if (iters.size()-1 < posn) {
-//							iters.add(plan.get(posn).iterator(dataContext, writeLock));
-//						} else {
-//							iters.set(posn, plan.get(posn).iterator(dataContext, writeLock));
-//						}
-//					}
-//				}
-//			} else {
-//				if (posn == 0) {
-//					break;
-//				}
-//				// we have reached the end. lets go up to higher iterator.
-//				posn--;
-//			}
-//		}
-//		
-//		for (int i = 0; i < iters.size(); i++) {
-//			ResultIterator iter = iters.get(i);
-//			iter.unlock();
-//		}
-//		it = set.iterator();
-//		return result;		
-//	}
-	
-	public static boolean filter(DataContext context, List<BasicExpression> expList) {
-		if (expList == null) {
+	public static boolean filterTree(DataContext context, SimpleNode tree, Map<String, CollectionAlias> fromMap) {
+		if (tree == null) {
 			return true;
 		}
-		for (int i = 0; i < expList.size(); i++) {
-			BasicExpression exp = expList.get(i);
-			Operand right = exp.getRightOperand();
-			Operand left = exp.getLeftOperand();
-			DBType rVal = null;
-			DBType lVal = null;
-			boolean contextAvailable = true;
-			
-			if (right instanceof VariableOperand) {
-				VariableOperand r = (VariableOperand) right;
-				try {
-					rVal = context.getValue(r.getCollectionAlias(), r.getColumnType(), r.getPath());
-				} catch (ValueNotAvailableException e) {
-					contextAvailable = false;
-				}
-				if (context.get(r.getCollectionAlias()) == null) {
-					contextAvailable = false;
-				}
-			} else {
-				StaticOperand r = (StaticOperand) right;
-				rVal = (DBType) r.getValue(null);
-			}
 
-			if (left instanceof VariableOperand) {
-				VariableOperand l = (VariableOperand) left;
-				try {
-					lVal = context.getValue(l.getCollectionAlias(), l.getColumnType(), l.getPath());
-				} catch (ValueNotAvailableException e) {
-					contextAvailable = false;
-				}
-				if (context.get(l.getCollectionAlias()) == null) {
-					contextAvailable = false;
-				}
-			} else {
-				StaticOperand l = (StaticOperand) left;
-				lVal = (DBType) l.getValue(null);
-			}
-			
-//			if (rVal == null || lVal == null || ExpressionEvaluator.getInstance().evaluate(lVal, rVal, exp) == 0) {
-			if (!contextAvailable || ExpressionEvaluator.getInstance().evaluate(lVal, rVal, exp) == 0) {
-				continue;
-			} else {
-				return false;
-			}
-		}
-		
-		return true;
+		QueryEvaluator  qe = new QueryEvaluator(fromMap, context);
+		return qe.processSelectStmt(tree);
 	}	
 }

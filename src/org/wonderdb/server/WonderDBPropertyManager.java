@@ -1,3 +1,4 @@
+package org.wonderdb.server;
 /*******************************************************************************
  *    Copyright 2013 Vilas Athavale
  *
@@ -13,14 +14,15 @@
  *    See the License for the specific language governing permissions and
  *    limitations under the License.
  *******************************************************************************/
-package org.wonderdb.server;
 
 import java.io.FileReader;
 import java.io.IOException;
 import java.util.Properties;
 
 public class WonderDBPropertyManager {
+	
 	private static final String SERVER_PORT = "server.port";
+	private static final String DEFAULT_BLOCK_SIZE = "2048";
 	private static final String REPLICASET_PORT = "replicaset.port";
 	private static final String SHARD_PORT = "shard.port";
 	private static final String SYSTEM_FILE = "systemFile";
@@ -461,4 +463,9 @@ public class WonderDBPropertyManager {
 		}
 		return false;
 	}	
+	
+	public int getDefaultBlockSize() {
+		String value = properties.getProperty(DEFAULT_BLOCK_SIZE, "2048");
+		return Integer.parseInt(value);
+	}
 }

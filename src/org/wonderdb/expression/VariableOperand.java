@@ -1,3 +1,5 @@
+package org.wonderdb.expression;
+
 /*******************************************************************************
  *    Copyright 2013 Vilas Athavale
  *
@@ -13,62 +15,68 @@
  *    See the License for the specific language governing permissions and
  *    limitations under the License.
  *******************************************************************************/
-package org.wonderdb.expression;
 
 import java.util.List;
+import java.util.Set;
 
-import org.wonderdb.block.record.table.TableRecord;
-import org.wonderdb.query.plan.CollectionAlias;
-import org.wonderdb.schema.CollectionColumn;
-import org.wonderdb.schema.CollectionMetadata;
-import org.wonderdb.schema.Index;
-import org.wonderdb.schema.SchemaMetadata;
+import org.wonderdb.collection.TableResultContent;
+import org.wonderdb.query.parse.CollectionAlias;
 import org.wonderdb.types.DBType;
-import org.wonderdb.types.impl.ColumnType;
-import org.wonderdb.types.impl.IndexKeyType;
+import org.wonderdb.types.IndexKeyType;
+import org.wonderdb.types.IndexRecordMetadata;
+import org.wonderdb.types.TypeMetadata;
+import org.wonderdb.types.record.TableRecord;
+
 
 
 public class VariableOperand implements Operand {
 	CollectionAlias collectionAlias;
-	ColumnType columnType;
-	String expression = null;
+	Integer columnId;
+	String path = null;
 	
-	public VariableOperand(CollectionAlias collectionAlias, ColumnType columnType, String expression) {
+	public VariableOperand(CollectionAlias collectionAlias, Integer columnId, String path) {
 		this.collectionAlias = collectionAlias;
-		this.columnType = columnType;
-		this.expression = expression;
+		this.columnId = columnId;
+		this.path = path;
 	}
 	
+	public String getPath() {
+		return path;
+	}
+
+	public void setPath(String path) {
+		this.path = path;
+	}
+
 	public CollectionAlias getCollectionAlias() {
 		return collectionAlias;
 	}
 
-	public ColumnType getColumnType() {
-		return columnType;
+	public Integer getColumnId() {
+		return columnId;
 	}
 	
-	public Comparable<DBType> getValue(Index idx, IndexKeyType key) {
+	public DBType getValue(IndexKeyType key, TypeMetadata meta) {
+		IndexRecordMetadata ism = (IndexRecordMetadata) meta;
 		List<DBType> val = key.getValue();
 		if (val == null || val.size() == 0) {
 			return null;
 		}
-		List<CollectionColumn> list = idx.getColumnList();
+		
+		List<Integer> list = ism.getTypeList();
 		for (int i = 0; i < list.size(); i++) {
-			ColumnType colType = list.get(i).getColumnType();
-			if (colType.equals(columnType)) {
+			Integer colType = list.get(i);
+			if (colType.equals(columnId)) {
 				return val.get(i);
 			}
 		}
 		return null;
 	}
 	
-	public Comparable<DBType> getValue(TableRecord trt) {
-		CollectionMetadata colMeta = SchemaMetadata.getInstance().getCollectionMetadata(collectionAlias.getCollectionName());
-		return trt.getColumnValue(colMeta, columnType, expression);
-	}
-	
-	public String getPath() {
-		return expression;
+	@Override
+	public DBType getValue(TableRecord trt, TypeMetadata meta, Set<Object> pinnedBlocks) {
+		TableResultContent trc = new TableResultContent(trt, meta, pinnedBlocks);
+		return trc.getValue(columnId);
 	}
 	
 	public boolean equals(Object o) {
@@ -81,6 +89,6 @@ public class VariableOperand implements Operand {
 			return false;
 		}
 		
-		return collectionAlias.equals(op.collectionAlias) && columnType.equals(op.columnType);
+		return collectionAlias.equals(op.collectionAlias) && columnId.equals(op.columnId);
 	}
 }

@@ -1,3 +1,5 @@
+package org.wonderdb.collection;
+
 /*******************************************************************************
  *    Copyright 2013 Vilas Athavale
  *
@@ -13,74 +15,68 @@
  *    See the License for the specific language governing permissions and
  *    limitations under the License.
  *******************************************************************************/
-package org.wonderdb.collection;
 
-import java.util.ArrayList;
-import java.util.List;
+import java.util.HashMap;
+import java.util.Iterator;
 import java.util.Map;
+import java.util.Set;
 
-import org.wonderdb.block.record.QueriableBlockRecord;
-import org.wonderdb.block.record.RecordBlock;
-import org.wonderdb.block.record.manager.RecordId;
-import org.wonderdb.cache.CacheObjectMgr;
-import org.wonderdb.schema.CollectionMetadata;
-import org.wonderdb.schema.SchemaMetadata;
+import org.wonderdb.serialize.ColumnSerializer;
 import org.wonderdb.types.DBType;
-import org.wonderdb.types.impl.ColumnType;
+import org.wonderdb.types.Extended;
+import org.wonderdb.types.ExtendedColumn;
+import org.wonderdb.types.RecordId;
+import org.wonderdb.types.TypeMetadata;
+import org.wonderdb.types.record.TableRecord;
 
 
-public class TableResultContent implements ResultContent {
-	private RecordId recordId = null;
-	private int schemaId = -1;
-	private RecordBlock lockedBlock = null;
+
+public class TableResultContent extends TableRecord implements ResultContent {
+	private TableRecord record = null;
+	private TypeMetadata meta = null;
+	private Set<Object> pinnedBlocks = null;
 	
-	public TableResultContent(RecordBlock lockedBlock, RecordId recordId, int schemaId) {
-		this.recordId = recordId;
-		this.schemaId = schemaId;
-		this.lockedBlock = lockedBlock;
+	public TableResultContent(TableRecord record, TypeMetadata meta, Set<Object> pinnedBlocks) {	
+		super(record.getColumnMap());
+		this.record = record;
+		this.meta = meta;
+		this.pinnedBlocks = pinnedBlocks;
 	}
 	
 	@Override
-	public DBType getValue(ColumnType ct, String path) {
-		if (recordId == null) {
+	public DBType getValue(Integer ct) {
+		if (record == null) {
+			return null;
+		}
+
+		DBType column = record.getColumnMap().get(ct);
+		if (column == null) {
 			return null;
 		}
 		
-		CollectionMetadata colMeta = SchemaMetadata.getInstance().getCollectionMetadata(schemaId); 
-		int schemaId = colMeta.getSchemaId();
-		List<ColumnType> ctList = new ArrayList<ColumnType>();
-
-		if (ct.getValue() instanceof String) {
-			ct = colMeta.getColumnType((String) ct.getValue());
+		if (column instanceof Extended && ((ExtendedColumn)column).getValue() == null) {
+			ColumnSerializer.getInstance().readFull(column, meta, pinnedBlocks);
+			record.getColumnMap().put(ct, column);
+			return ((ExtendedColumn) column).getValue();
 		}
-		if (ct != null && colMeta.getSchemaId() >= 3) {
-			ctList.add(ct);
-			QueriableBlockRecord record = CacheObjectMgr.getInstance().getRecord(lockedBlock, recordId, ctList, schemaId, null);
-			if (record != null) {
-				return record.getColumnValue(colMeta, ct, path);
-			}
-		}
-		return null;
+		return column;
 	}
 
 	@Override
-	public Map<ColumnType, DBType> getAllColumns() {
-		return CacheObjectMgr.getInstance().getRecord(lockedBlock, recordId, null, schemaId, null).getColumns(); 
+	public Map<Integer, DBType> getAllColumns() {
+		Map<Integer, DBType> retMap = new HashMap<Integer, DBType>();
+		Map<Integer, DBType> map = record.getColumnMap();
+		Iterator<Integer> iter = map.keySet().iterator();
+		while (iter.hasNext()) {
+			int key = iter.next();
+			DBType dbtype = getValue(key);
+			retMap.put(key, dbtype);
+		}
+		return retMap;
 	}
 
 	@Override
 	public RecordId getRecordId() {
-		return recordId;
+		return record.getRecordId();
 	}
-
-	@Override
-	public int getSchemaId() {
-		return schemaId;
-	}
-
-	@Override
-	public int getCollectionSchemaId() {
-		return schemaId;
-	}
-
 }

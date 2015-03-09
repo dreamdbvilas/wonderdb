@@ -1,3 +1,5 @@
+package org.wonderdb.query.parse;
+
 /*******************************************************************************
  *    Copyright 2013 Vilas Athavale
  *
@@ -13,43 +15,49 @@
  *    See the License for the specific language governing permissions and
  *    limitations under the License.
  *******************************************************************************/
-package org.wonderdb.query.parse;
 
 import java.util.List;
 
 import org.wonderdb.expression.AndExpression;
-import org.wonderdb.parser.UQLParser.ShowIndexStmt;
-import org.wonderdb.schema.CollectionColumn;
-import org.wonderdb.schema.IndexMetadata;
+import org.wonderdb.metadata.StorageMetadata;
+import org.wonderdb.parser.ShowIndexStmt;
+import org.wonderdb.schema.CollectionMetadata;
 import org.wonderdb.schema.SchemaMetadata;
+import org.wonderdb.types.ColumnNameMeta;
+import org.wonderdb.types.IndexNameMeta;
 
 
 public class ShowIndexQuery extends BaseDBQuery {
 	String indexName;
 	
-	public ShowIndexQuery(ShowIndexStmt stmt){
-		super(null, -1, null);
+	public ShowIndexQuery(String q, ShowIndexStmt stmt){
+		super(q, null, -1, null);
 		indexName = stmt.indexName;
 	}
 	
 	
 	public String execute() {
-		IndexMetadata idxMeta = SchemaMetadata.getInstance().getIndex(indexName);
+		IndexNameMeta idxMeta = SchemaMetadata.getInstance().getIndex(indexName);
 		if (idxMeta == null) {
 			return "\n";
 		}
+		byte fileId = idxMeta.getHead().getFileId();
+		String storage = StorageMetadata.getInstance().getFileName(fileId);
+		
 		StringBuilder builder = new StringBuilder();
-		builder.append("Index Name: ").append(idxMeta.getIndex().getIndexName()).append("\n");
-		builder.append("Collection Name: ").append(idxMeta.getIndex().getCollectionName()).append("\n");
-		builder.append("Is unique: ").append(idxMeta.getIndex().isUnique()).append("\n");
-		List<CollectionColumn> cols = idxMeta.getIndex().getColumnList();
-		for (CollectionColumn col : cols) {
-			builder.append(col.getColumnName())
+		builder.append("Index Name: ").append(indexName).append("\n");
+		builder.append("Collection Name: ").append(idxMeta.getCollectionName()).append("\n");
+		builder.append("Is unique: ").append(idxMeta.isUnique()).append("\n");
+		List<Integer> cols = idxMeta.getColumnIdList();
+		CollectionMetadata colMeta = SchemaMetadata.getInstance().getCollectionMetadata(idxMeta.getCollectionName());
+		for (Integer col : cols) {
+			ColumnNameMeta cnm = colMeta.getCollectionColumn(col);
+			builder.append(cnm.getColumnName())
 			.append("\t")
-			.append(getType(col.getCollectionColumnSerializerName()))
+			.append(cnm.getColumnType())
 			.append("\n");
 		}
-		
+		builder.append("STORAGE:	").append(storage).append("\n");
 		return builder.toString();
 	}
 	

@@ -1,3 +1,5 @@
+package org.wonderdb.cluster;
+
 /*******************************************************************************
  *    Copyright 2013 Vilas Athavale
  *
@@ -13,9 +15,7 @@
  *    See the License for the specific language governing permissions and
  *    limitations under the License.
  *******************************************************************************/
-package org.wonderdb.cluster;
 
-import org.wonderdb.cluster.zk.ZkClusterManager;
 import org.wonderdb.server.WonderDBPropertyManager;
 
 public class ClusterManagerFactory {
@@ -27,7 +27,7 @@ public class ClusterManagerFactory {
 		if (zkConnectProperty == null || zkConnectProperty.length() == 0) {
 			clusterManager = new DefaultClusterManager();
 		} else {
-			clusterManager = new ZkClusterManager();
+//			clusterManager = new ZkClusterManager();
 //			((ZkClusterManager) clusterManager).init();
 		}
 	}

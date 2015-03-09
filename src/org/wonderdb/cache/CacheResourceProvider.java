@@ -1,3 +1,6 @@
+package org.wonderdb.cache;
+
+
 /*******************************************************************************
  *    Copyright 2013 Vilas Athavale
  *
@@ -13,14 +16,10 @@
  *    See the License for the specific language governing permissions and
  *    limitations under the License.
  *******************************************************************************/
-package org.wonderdb.cache;
 
 
 
 
-public interface CacheResourceProvider<Resource> {
-//	Resource getResource(BlockPtr ptr, byte recordType, long ts);
-	void returnResource(Resource resource);
-//	void returnPrimaryResource(Resource resource);
-//	void getPrimaryResource(BlockPtr ptr, byte recordType, long ts);
+public interface CacheResourceProvider<Key, Data> {
+	void returnResource(Cacheable<Key, Data> resource);
 }

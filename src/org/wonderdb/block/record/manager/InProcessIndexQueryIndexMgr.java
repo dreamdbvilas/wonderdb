@@ -1,3 +1,5 @@
+package org.wonderdb.block.record.manager;
+
 /*******************************************************************************
  *    Copyright 2013 Vilas Athavale
  *
@@ -13,7 +15,6 @@
  *    See the License for the specific language governing permissions and
  *    limitations under the License.
  *******************************************************************************/
-package org.wonderdb.block.record.manager;
 
 import java.util.HashSet;
 import java.util.Iterator;
@@ -21,7 +22,8 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 
-import org.wonderdb.types.impl.IndexKeyType;
+import org.wonderdb.types.IndexKeyType;
+
 
 
 public class InProcessIndexQueryIndexMgr {

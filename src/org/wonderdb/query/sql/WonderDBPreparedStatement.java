@@ -1,3 +1,5 @@
+package org.wonderdb.query.sql;
+
 /*******************************************************************************
  *    Copyright 2013 Vilas Athavale
  *
@@ -13,7 +15,6 @@
  *    See the License for the specific language governing permissions and
  *    limitations under the License.
  *******************************************************************************/
-package org.wonderdb.query.sql;
 
 import java.io.InputStream;
 import java.io.Reader;
@@ -129,7 +130,8 @@ public class WonderDBPreparedStatement implements PreparedStatement {
         	} else {
         		buf.writeByte((byte) 1);
         		buf.writeInt(value.value.toString().getBytes().length);
-        		buf.writeBytes(value.value.toString().getBytes());        		
+        		buf.writeBytes(value.value.toString().getBytes());      
+        		buf.writeInt(value.type);
         	}
         }
         buf.writeInt(0);
@@ -752,5 +754,17 @@ public class WonderDBPreparedStatement implements PreparedStatement {
 	
 	static class ResultSetValue {
 		List<Object> valueList = new ArrayList<Object>();
+	}
+
+	@Override
+	public void closeOnCompletion() throws SQLException {
+		// TODO Auto-generated method stub
+		
+	}
+
+	@Override
+	public boolean isCloseOnCompletion() throws SQLException {
+		// TODO Auto-generated method stub
+		return false;
 	}
 }

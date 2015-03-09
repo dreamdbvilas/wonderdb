@@ -1,3 +1,5 @@
+package org.wonderdb.server;
+
 /*******************************************************************************
  *    Copyright 2013 Vilas Athavale
  *
@@ -13,7 +15,6 @@
  *    See the License for the specific language governing permissions and
  *    limitations under the License.
  *******************************************************************************/
-package org.wonderdb.server;
 
 import java.sql.Types;
 import java.util.ArrayList;
@@ -27,41 +28,38 @@ import org.jboss.netty.channel.ChannelStateEvent;
 import org.jboss.netty.channel.ExceptionEvent;
 import org.jboss.netty.channel.MessageEvent;
 import org.jboss.netty.channel.SimpleChannelHandler;
-import org.wonderdb.collection.exceptions.InvalidCollectionNameException;
-import org.wonderdb.collection.exceptions.InvalidIndexException;
 import org.wonderdb.collection.exceptions.UniqueKeyViolationException;
-import org.wonderdb.file.FileAlreadyExisits;
-import org.wonderdb.file.StorageFileCreationException;
+import org.wonderdb.exception.InvalidCollectionNameException;
+import org.wonderdb.exception.InvalidIndexException;
+import org.wonderdb.exceptions.FileAlreadyExists;
+import org.wonderdb.exceptions.StorageFileCreationException;
+import org.wonderdb.parser.jtree.QueryParser;
 import org.wonderdb.query.executor.ScatterGatherQueryExecutor;
-import org.wonderdb.query.parse.AddToReplicaSetQuery;
 import org.wonderdb.query.parse.CreateIndexQuery;
-import org.wonderdb.query.parse.CreateReplicaSetQuery;
-import org.wonderdb.query.parse.CreateShardQuery;
-import org.wonderdb.query.parse.CreateTableQuery;
 import org.wonderdb.query.parse.DBCreateStorageQuery;
+import org.wonderdb.query.parse.DBCreateTableQuery;
 import org.wonderdb.query.parse.DBDeleteQuery;
 import org.wonderdb.query.parse.DBInsertQuery;
 import org.wonderdb.query.parse.DBQuery;
-import org.wonderdb.query.parse.DBSelectQuery;
-import org.wonderdb.query.parse.DBSelectQuery.ResultSetColumn;
-import org.wonderdb.query.parse.DBSelectQuery.ResultSetValue;
 import org.wonderdb.query.parse.DBShowPlanQuery;
 import org.wonderdb.query.parse.DBUpdateQuery;
-import org.wonderdb.query.parse.QueryParser;
 import org.wonderdb.query.parse.ShowIndexQuery;
 import org.wonderdb.query.parse.ShowSchemaQuery;
 import org.wonderdb.query.parse.ShowStoragesQuery;
 import org.wonderdb.query.parse.ShowTableQuery;
+import org.wonderdb.query.parser.jtree.DBSelectQueryJTree;
+import org.wonderdb.query.parser.jtree.DBSelectQueryJTree.ResultSetColumn;
+import org.wonderdb.query.parser.jtree.DBSelectQueryJTree.ResultSetValue;
+import org.wonderdb.query.parser.jtree.DBSelectQueryJTree.VirtualResultSetColumn;
 import org.wonderdb.query.plan.FullTableScan;
 import org.wonderdb.query.plan.IndexRangeScan;
 import org.wonderdb.query.plan.QueryPlan;
-import org.wonderdb.seralizers.BlockPtrSerializer;
-import org.wonderdb.seralizers.CollectionColumnSerializer;
-import org.wonderdb.seralizers.SerializerManager;
-import org.wonderdb.seralizers.StringSerializer;
-import org.wonderdb.types.DBType;
-import org.wonderdb.types.SerializableType;
-import org.wonderdb.types.impl.StringType;
+import org.wonderdb.schema.CollectionMetadata;
+import org.wonderdb.schema.SchemaMetadata;
+import org.wonderdb.serialize.Serializer;
+import org.wonderdb.serialize.SerializerManager;
+import org.wonderdb.types.ColumnNameMeta;
+import org.wonderdb.types.StringType;
 
 
 
@@ -91,7 +89,7 @@ public class WonderDBShardServerHandler extends SimpleChannelHandler {
     	byte[] bytes = new byte[queryLen];
     	buffer.readBytes(bytes);
     	String s = new String(bytes);
-    	List<DBType> bindParamList = new ArrayList<DBType>();
+    	List<Object> bindParamList = new ArrayList<>();
     	int bindParamCount = buffer.readInt();
     	for (int i = 0; i < bindParamCount; i++) {
     		byte b = buffer.readByte();
@@ -102,7 +100,29 @@ public class WonderDBShardServerHandler extends SimpleChannelHandler {
     		int size = buffer.readInt();
     		bytes = new byte[size];
     		buffer.readBytes(bytes);
-    		bindParamList.add(new StringType(new String(bytes)));
+    		int type = buffer.readInt();
+    		Object dt = null;
+    		String s1 = new String(bytes);
+    		switch (type) {
+    		case Types.INTEGER:
+    			dt = Integer.parseInt(s1);
+    			break;
+    		case Types.FLOAT:
+    			dt = Float.parseFloat(s1);
+    			break;
+    		case Types.DOUBLE:
+    			dt = Double.parseDouble(s1);
+    			break;
+    		case Types.VARCHAR:
+    			dt = s1;
+    			break;
+    		case Types.NUMERIC:
+    			dt = Long.parseLong(s1);
+    			break;
+    		default:
+    			break;
+    		}
+    		bindParamList.add(dt);
     	}
     	
     	int version = buffer.readInt();
@@ -123,18 +143,16 @@ public class WonderDBShardServerHandler extends SimpleChannelHandler {
 				}
 	    	} else {
 		    	String query = s;
-		    	if (query.startsWith("explain plan")) {
+		    	QueryParser parser = QueryParser.getInstance();
+		    	DBQuery q = parser.parse(query, bindParamList, handlerType, buffer);
+		    	if (q instanceof DBShowPlanQuery) {
 //		    		handleValidate(outBuf, channel);
-		    		DBShowPlanQuery q = new DBShowPlanQuery(query, bindParamList);
-		    		handleExplainPlan(q, outBuf, channel);
-		    	} else if (query.equals("show storages")) {
-		    		ShowStoragesQuery q = new ShowStoragesQuery();
-		    		handleShowStoragesQuery(q, channel);
+		    		handleExplainPlan((DBShowPlanQuery) q, outBuf, channel);
+		    	} else if (q instanceof ShowStoragesQuery) {
+		    		handleShowStoragesQuery((ShowStoragesQuery) q, channel);
 		    	} else {
-			    	QueryParser parser = QueryParser.getInstance();
-			    	DBQuery q = parser.parse(query, bindParamList, handlerType, buffer);
-			    	if (q instanceof DBSelectQuery) {
-			    		handleSelectQuery((DBSelectQuery) q, outBuf, channel);
+			    	if (q instanceof DBSelectQueryJTree) {
+			    		handleSelectQuery((DBSelectQueryJTree) q, outBuf, channel);
 			    	} else if (q instanceof DBInsertQuery) {
 			    		handleInsertQuery((DBInsertQuery) q, outBuf);
 			    	} else if (q instanceof DBUpdateQuery) {
@@ -143,8 +161,8 @@ public class WonderDBShardServerHandler extends SimpleChannelHandler {
 			    		handleDeleteQuery((DBDeleteQuery) q, outBuf);
 			    	} else if (q instanceof CreateIndexQuery) {
 			    		handleCreateIndexQuery((CreateIndexQuery) q, outBuf);
-			    	} else if (q instanceof CreateTableQuery) {
-			    		handleCreateTableQuery((CreateTableQuery) q, outBuf);
+			    	} else if (q instanceof DBCreateTableQuery) {
+			    		handleCreateTableQuery((DBCreateTableQuery) q, outBuf);
 			    	} else if (q instanceof ShowTableQuery) {
 			    		handleShowTableQuery((ShowTableQuery) q, channel);
 			    	} else if (q instanceof ShowIndexQuery) {
@@ -153,13 +171,14 @@ public class WonderDBShardServerHandler extends SimpleChannelHandler {
 			    		handleShowSchemaQuery((ShowSchemaQuery) q, channel);
 			    	} else if (q instanceof DBCreateStorageQuery) {
 			    		handleCreateStorageQuery((DBCreateStorageQuery) q, outBuf);
-			    	} else if (q instanceof CreateShardQuery) {
-			    		handleCreateShardQuery((CreateShardQuery) q, outBuf);
-			    	} else if (q instanceof CreateReplicaSetQuery) {
-			    		handleCreateReplicaSetQuery((CreateReplicaSetQuery) q, outBuf);
-			    	} else if (q instanceof AddToReplicaSetQuery) {
-			    		handleAddToReplicaSetQuery((AddToReplicaSetQuery) q, outBuf);
 			    	}
+//			    	} else if (q instanceof CreateShardQuery) {
+//			    		handleCreateShardQuery((CreateShardQuery) q, outBuf);
+//			    	} else if (q instanceof CreateReplicaSetQuery) {
+//			    		handleCreateReplicaSetQuery((CreateReplicaSetQuery) q, outBuf);
+//			    	} else if (q instanceof AddToReplicaSetQuery) {
+//			    		handleAddToReplicaSetQuery((AddToReplicaSetQuery) q, outBuf);
+//			    	}
 		    	}
 	    	} 
     	} catch (Throwable t) {
@@ -172,6 +191,7 @@ public class WonderDBShardServerHandler extends SimpleChannelHandler {
 //    		outBuf.writeBytes(s1.getBytes());
     	}
     	channel.write(outBuf);
+    	outBuf.clear();
     } 
 
 //    private void handleValidate(ChannelBuffer buffer, Channel channel) {
@@ -244,13 +264,13 @@ public class WonderDBShardServerHandler extends SimpleChannelHandler {
     }    
     
     
-    private void handleSelectQuery(DBSelectQuery q, ChannelBuffer buffer, Channel channel) {
+    private void handleSelectQuery(DBSelectQueryJTree q, ChannelBuffer buffer, Channel channel) {
     	
-		List<List<ResultSetValue>> list = ((DBSelectQuery) q).execute();
+		List<List<ResultSetValue>> list = q.execute();
 		serialize(q, list, buffer, channel);
     }
     
-    private void serialize(DBSelectQuery q, List<List<ResultSetValue>> list, ChannelBuffer buffer, Channel channel) {
+    private void serialize(DBSelectQueryJTree q, List<List<ResultSetValue>> list, ChannelBuffer buffer, Channel channel) {
     	List<ResultSetColumn> rscList = q.resultsetColumns;
     	ChannelBuffer metaBuffer = ChannelBuffers.dynamicBuffer();
     	metaBuffer.writerIndex(5);
@@ -258,20 +278,22 @@ public class WonderDBShardServerHandler extends SimpleChannelHandler {
     	int colCount = 0;
     	for (int i = 0; i < rscList.size(); i++) {
     		ResultSetColumn rsc = rscList.get(i);
-    		String colName = rsc.ca.getCollectionName()+".";
-    		if (rsc.ca.getAlias() != null && rsc.ca.getAlias().length() > 0) {
-    			colName = rsc.ca.getAlias() + "." + colName;
+    		CollectionMetadata colMeta = SchemaMetadata.getInstance().getCollectionMetadata(rsc.ca.getCollectionName());
+    		String colName = "";
+    		int colType = -1;
+    		if (rsc instanceof VirtualResultSetColumn) {
+    			colName = ((VirtualResultSetColumn) rsc).columnAlias;
+    			colType = ((VirtualResultSetColumn) rsc).function.getColumnType();
+    		} else {
+    			colName = colName + rsc.resultColumnName;
+    			colType = colMeta.getColumnType(colName);
     		}
-    		colName = colName + rsc.cc.getColumnName();
-    		String serName = rsc.cc.getCollectionColumnSerializerName();
-    		CollectionColumnSerializer<? extends SerializableType> ser = SerializerManager.getInstance().getSerializer(serName);
-    		if (ser instanceof BlockPtrSerializer) {
-    			continue;
-    		}
+    		
+    		int sqlType = Serializer.getInstance().getSQLType(colType);
     		colCount++;
     		metaBuffer.writeInt(colName.getBytes().length);
     		metaBuffer.writeBytes(colName.getBytes());
-    		metaBuffer.writeInt(ser.getSQLType());
+    		metaBuffer.writeInt(sqlType);
     	}
     	
     	int posn = metaBuffer.writerIndex();
@@ -295,16 +317,23 @@ public class WonderDBShardServerHandler extends SimpleChannelHandler {
 //        		if (schemaId < 3) {
 //        			continue;
 //        		}
-        		String serName = rsc.cc.getCollectionColumnSerializerName();
-        		CollectionColumnSerializer<? extends SerializableType> ser = SerializerManager.getInstance().getSerializer(serName);
+        		int colType = -1;
+        		if (rsc instanceof VirtualResultSetColumn) {
+        			colType = ((VirtualResultSetColumn) rsc).function.getColumnType();
+        		} else {
+        			int colId = rsc.columnId;
+        			CollectionMetadata colMeta = SchemaMetadata.getInstance().getCollectionMetadata(rsc.ca.getCollectionName());
+        			ColumnNameMeta cnm = colMeta.getCollectionColumn(colId);
+        			colType = cnm.getColumnType();
+        		}
         		ResultSetValue rsv = valueList.get(i);
         		
-        		if (ser instanceof BlockPtrSerializer) {
-        			continue;
-        		}
+//        		if (ser instanceof BlockPtrSerializer) {
+//        			continue;
+//        		}
         		if (rsv.value != null) {
         			tmpBuffer.writeByte(0);
-    				ser.toBytes(rsv.value, tmpBuffer);
+        			SerializerManager.getInstance().getSerializer(colType).toBytes(rsv.value, tmpBuffer, null);
         		} else {
 					tmpBuffer.writeByte(1);
 				}
@@ -327,7 +356,7 @@ public class WonderDBShardServerHandler extends SimpleChannelHandler {
     	buffer.writeInt(4);
     	buffer.writeByte((byte) 1);
     	buffer.writeInt(list.size());
-    	channel.write(buffer);
+//    	channel.write(buffer);
 //    	buffer.clear();
     }    
     
@@ -367,7 +396,7 @@ public class WonderDBShardServerHandler extends SimpleChannelHandler {
     	} catch (StorageFileCreationException e) {
     		errCode = 5;
     		message = "Cannot create storage: " + q.getFileName();
-    	} catch (FileAlreadyExisits e1) {
+    	} catch (FileAlreadyExists e1) {
 			message = q.getFileName() + " storage " + q.getFileName() + " already exisits ...";
 			errCode = 1;
     	}
@@ -380,39 +409,39 @@ public class WonderDBShardServerHandler extends SimpleChannelHandler {
     	buffer.writeBytes(message.getBytes());
     }
     
-    private void handleCreateShardQuery(CreateShardQuery q, ChannelBuffer buffer) {
-    	q.execute();
-    	String message = "shard created ...";
-    	buffer.clear();
-    	buffer.writeInt(8 + message.getBytes().length);
-    	buffer.writeByte((byte) 1);
-    	buffer.writeInt(1);
-    	buffer.writeInt(0);
-    	buffer.writeBytes(message.getBytes());
-    }
-    
-    private void handleCreateReplicaSetQuery(CreateReplicaSetQuery q, ChannelBuffer buffer) {
-    	q.execute();
-    	String message = "shard created ...";
-    	buffer.clear();
-    	buffer.writeInt(8 + message.getBytes().length);
-    	buffer.writeByte((byte) 1);
-    	buffer.writeInt(1);
-    	buffer.writeInt(0);
-    	buffer.writeBytes(message.getBytes());
-    }
-    
-    private void handleAddToReplicaSetQuery(AddToReplicaSetQuery q, ChannelBuffer buffer) {
-    	q.execute();
-    	String message = "shard created ...";
-    	buffer.clear();
-    	buffer.writeInt(8 + message.getBytes().length);
-    	buffer.writeByte((byte) 1);
-    	buffer.writeInt(1);
-    	buffer.writeInt(0);
-    	buffer.writeBytes(message.getBytes());
-    }
-    
+//    private void handleCreateShardQuery(CreateShardQuery q, ChannelBuffer buffer) {
+//    	q.execute();
+//    	String message = "shard created ...";
+//    	buffer.clear();
+//    	buffer.writeInt(8 + message.getBytes().length);
+//    	buffer.writeByte((byte) 1);
+//    	buffer.writeInt(1);
+//    	buffer.writeInt(0);
+//    	buffer.writeBytes(message.getBytes());
+//    }
+//    
+//    private void handleCreateReplicaSetQuery(CreateReplicaSetQuery q, ChannelBuffer buffer) {
+//    	q.execute();
+//    	String message = "shard created ...";
+//    	buffer.clear();
+//    	buffer.writeInt(8 + message.getBytes().length);
+//    	buffer.writeByte((byte) 1);
+//    	buffer.writeInt(1);
+//    	buffer.writeInt(0);
+//    	buffer.writeBytes(message.getBytes());
+//    }
+//    
+//    private void handleAddToReplicaSetQuery(AddToReplicaSetQuery q, ChannelBuffer buffer) {
+//    	q.execute();
+//    	String message = "shard created ...";
+//    	buffer.clear();
+//    	buffer.writeInt(8 + message.getBytes().length);
+//    	buffer.writeByte((byte) 1);
+//    	buffer.writeInt(1);
+//    	buffer.writeInt(0);
+//    	buffer.writeBytes(message.getBytes());
+//    }
+//    
     private void handleUpdateQuery(DBUpdateQuery q, ChannelBuffer buffer) {
     	int count = 0;
     	String message = "";
@@ -465,7 +494,7 @@ public class WonderDBShardServerHandler extends SimpleChannelHandler {
     	buffer.writeBytes(message.getBytes());
     }
     
-    private void handleCreateTableQuery(CreateTableQuery q, ChannelBuffer buffer) {
+    private void handleCreateTableQuery(DBCreateTableQuery q, ChannelBuffer buffer) {
     	String message = "";
     	int errCode = 0;
     	try {
@@ -523,10 +552,11 @@ public class WonderDBShardServerHandler extends SimpleChannelHandler {
 		ChannelBuffer tmpBuffer = ChannelBuffers.dynamicBuffer();
 		tmpBuffer.writerIndex(5);
     		
-		CollectionColumnSerializer<? extends SerializableType> ser = StringSerializer.getInstance();
 		tmpBuffer.writeByte(0);
-		ser.toBytes(new StringType(plan), tmpBuffer);
-
+//		Serializer.getInstance().serialize(SerializerManager.STRING, new StringType(plan), tmpBuffer, null);
+		tmpBuffer.writeInt(plan.length());
+		tmpBuffer.writeBytes(plan.getBytes());
+		
     	int p = tmpBuffer.readableBytes();
     	tmpBuffer.resetWriterIndex();
     	tmpBuffer.writeInt(p-5);

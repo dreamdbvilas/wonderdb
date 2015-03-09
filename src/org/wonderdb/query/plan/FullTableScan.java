@@ -1,3 +1,4 @@
+package org.wonderdb.query.plan;
 /*******************************************************************************
  *    Copyright 2013 Vilas Athavale
  *
@@ -13,38 +14,39 @@
  *    See the License for the specific language governing permissions and
  *    limitations under the License.
  *******************************************************************************/
-package org.wonderdb.query.plan;
 
 import java.util.List;
 import java.util.Set;
 
 import org.wonderdb.block.Block;
-import org.wonderdb.block.BlockPtr;
-import org.wonderdb.block.record.RecordBlock;
-import org.wonderdb.block.record.table.TableRecord;
-import org.wonderdb.cache.CacheObjectMgr;
+import org.wonderdb.block.BlockEntryPosition;
+import org.wonderdb.block.BlockManager;
 import org.wonderdb.cluster.Shard;
-import org.wonderdb.collection.ResultContent;
-import org.wonderdb.collection.ResultIterator;
 import org.wonderdb.collection.TableResultContent;
-import org.wonderdb.collection.impl.BaseResultIteratorImpl;
-import org.wonderdb.collection.impl.BlockEntryPosition;
-import org.wonderdb.collection.impl.QueriableRecordList;
-import org.wonderdb.schema.CollectionMetadata;
+import org.wonderdb.core.collection.ResultIterator;
+import org.wonderdb.core.collection.WonderDBList;
+import org.wonderdb.core.collection.impl.BaseResultIteratorImpl;
+import org.wonderdb.query.parse.CollectionAlias;
 import org.wonderdb.schema.SchemaMetadata;
-import org.wonderdb.types.Cacheable;
-import org.wonderdb.types.impl.ColumnType;
+import org.wonderdb.types.BlockPtr;
+import org.wonderdb.types.TypeMetadata;
+import org.wonderdb.types.record.Record;
+import org.wonderdb.types.record.TableRecord;
 
 
 
 public class FullTableScan implements QueryPlan {
 	CollectionAlias collectionAlias;
 	ResultIterator iter = null;
-	Set<BlockPtr> pinnedBlocks = null;
+	Set<Object> pinnedBlocks = null;
+	TypeMetadata meta = null;
+	WonderDBList recordList = null;
 	
-	public FullTableScan(CollectionAlias ca, Set<BlockPtr> pinnedBlocks) {
+	public FullTableScan(WonderDBList recordList, CollectionAlias ca, Set<Object> pinnedBlocks) {
 		collectionAlias = ca;
 		this.pinnedBlocks = pinnedBlocks;
+		this.recordList = recordList;
+		meta = SchemaMetadata.getInstance().getTypeMetadata(ca.getCollectionName());
 	}
 	
 	public void setDependentCollections(Set<CollectionAlias> ca) {
@@ -54,14 +56,12 @@ public class FullTableScan implements QueryPlan {
 		return collectionAlias;
 	}
 
-	public ResultIterator iterator(DataContext context, Shard shard, List<ColumnType> selectColumnList, boolean writeLock) {
-		CollectionMetadata collectionMeta = SchemaMetadata.getInstance().getCollectionMetadata(collectionAlias.collectionName);
-		if (collectionMeta == null) {
-			return null;
-		}
-		QueriableRecordList recordList = collectionMeta.getRecordList(shard);
-		RecordBlock head = recordList.getHead(writeLock, selectColumnList, pinnedBlocks);
-		ResultIterator iter = new FullTableScanIterator(new BlockEntryPosition(head, 0));
+	public ResultIterator iterator(DataContext context, Shard shard, List<Integer> selectColumnList, boolean writeLock) {
+		TypeMetadata meta = SchemaMetadata.getInstance().getTypeMetadata(collectionAlias.getCollectionName());
+ 		BlockPtr head = recordList.getRealHead(pinnedBlocks, meta);
+ 		Block block = BlockManager.getInstance().getBlock(head, meta, pinnedBlocks);
+ 		block.readLock();
+		ResultIterator iter = new FullTableScanIterator(new BlockEntryPosition(block, 0));
 		this.iter = iter;
 		return iter;
 	}
@@ -85,19 +85,17 @@ public class FullTableScan implements QueryPlan {
 	}
 	
 	public class FullTableScanIterator extends BaseResultIteratorImpl {
+		String schemaObjectName = null;
+		
 		private FullTableScanIterator(BlockEntryPosition bep) {
-			super(bep, false);
+			super(bep, false, meta);
 		}
 		
-//		public void lock(Block block) {
-//			block.readLock();
-//		}
-		
-		public Block getBlock(BlockPtr ptr) {
-			return CacheObjectMgr.getInstance().getRecordBlockWithHeaderLoaded(ptr, currentPosn.getBlock().getSchemaObjectId(), pinnedBlocks);
+		public Block getBlock(BlockPtr ptr, TypeMetadata meta) {
+			return BlockManager.getInstance().getBlock(ptr, meta, pinnedBlocks);
 		}
 		
-		public int insert(Cacheable c) {
+		public void insert(Record c) {
 			throw new RuntimeException("Method not supported");
 		}
 		
@@ -105,10 +103,14 @@ public class FullTableScan implements QueryPlan {
 			return iter.getCurrentBlock();
 		}
 		
-		public ResultContent next() {
-			TableRecord record = (TableRecord) super.nextEntry();
-			int schemaId = SchemaMetadata.getInstance().getCollectionMetadata(collectionAlias.collectionName).getSchemaId();
-			return new TableResultContent((RecordBlock) super.getCurrentBlock(), record.getRecordId(), schemaId);
+		public Record next() {
+			TableRecord record = (TableRecord) super.next();
+			return new TableResultContent(record, meta, pinnedBlocks);
 		}
+
+//		@Override
+//		public String getSchemaObjectName() {
+//			return schemaObjectName;
+//		}
 	}
 }

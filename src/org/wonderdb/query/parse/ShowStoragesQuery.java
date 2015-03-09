@@ -1,3 +1,5 @@
+package org.wonderdb.query.parse;
+
 /*******************************************************************************
  *    Copyright 2013 Vilas Athavale
  *
@@ -13,33 +15,32 @@
  *    See the License for the specific language governing permissions and
  *    limitations under the License.
  *******************************************************************************/
-package org.wonderdb.query.parse;
 
 import java.util.List;
 
 import org.wonderdb.expression.AndExpression;
-import org.wonderdb.file.FileBlockManager;
-import org.wonderdb.schema.FileBlockEntryType;
+import org.wonderdb.storage.FileBlockManager;
+import org.wonderdb.types.FileBlockEntry;
 
 
 public class ShowStoragesQuery extends BaseDBQuery {
 	
-	public ShowStoragesQuery(){
-		super(null, -1, null);
+	public ShowStoragesQuery(String q){
+		super(q, null, -1, null);
 	}
 	
 	
 	public String execute() {
-		List<FileBlockEntryType> entries = FileBlockManager.getInstance().getFileBlockEntries();
+		List<FileBlockEntry> entries = FileBlockManager.getInstance().getFileBlockEntries();
 		if (entries == null) {
 			return "\n";
 		}
 		StringBuilder builder = new StringBuilder();
-		for (FileBlockEntryType entry : entries) {
+		for (FileBlockEntry entry : entries) {
 			builder.append("-------------------------------------------------------------------------\n");
 			builder.append("File Name: ").append(entry.getFileName()).append("\n");
 			builder.append("Block Size: ").append(entry.getBlockSize()).append("\n");
-			builder.append("Is Default: ").append(entry.isDefault()).append("\n");
+			builder.append("Is Default: ").append(entry.isDefaultFile()).append("\n");
 			builder.append("\n");
 		}
 		return builder.toString();

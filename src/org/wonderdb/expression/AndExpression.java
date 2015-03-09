@@ -1,3 +1,5 @@
+package org.wonderdb.expression;
+
 /*******************************************************************************
  *    Copyright 2013 Vilas Athavale
  *
@@ -13,7 +15,6 @@
  *    See the License for the specific language governing permissions and
  *    limitations under the License.
  *******************************************************************************/
-package org.wonderdb.expression;
 
 import java.util.ArrayList;
 import java.util.List;

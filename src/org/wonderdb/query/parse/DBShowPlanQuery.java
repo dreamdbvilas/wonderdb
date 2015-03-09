@@ -1,3 +1,5 @@
+package org.wonderdb.query.parse;
+
 /*******************************************************************************
  *    Copyright 2013 Vilas Athavale
  *
@@ -13,36 +15,27 @@
  *    See the License for the specific language governing permissions and
  *    limitations under the License.
  *******************************************************************************/
-package org.wonderdb.query.parse;
 
 import java.util.List;
 
-import org.jboss.netty.buffer.ChannelBuffer;
 import org.wonderdb.cluster.Shard;
 import org.wonderdb.expression.AndExpression;
+import org.wonderdb.parser.jtree.SimpleNode;
+import org.wonderdb.query.parser.jtree.DBSelectQueryJTree;
 import org.wonderdb.query.plan.QueryPlan;
-import org.wonderdb.schema.SchemaMetadata;
-import org.wonderdb.types.DBType;
 
 
 
 public class DBShowPlanQuery extends BaseDBQuery {
-	DBSelectQuery q = null;
-	public DBShowPlanQuery(String query, List<DBType> bindParamList) {
-		super(query, -1, null);
-		q = (DBSelectQuery) parse(query, bindParamList, null);
-	}
-	
-	public DBQuery parse(String query, List<DBType> bindParamList, ChannelBuffer buffer) {		
-		String s = query.replace("explain plan", "").trim();
-		return QueryParser.getInstance().parse(s, bindParamList, -1, buffer);
+	DBSelectQueryJTree q = null;
+	public DBShowPlanQuery(String q1, SimpleNode query) {
+		super(q1, query, -1, null);
+		q = new DBSelectQueryJTree(q1, query, query, -1, buffer);
 	}
 	
 	public List<QueryPlan> execute() {
 		Shard shard = null;
-		String collectionName = q.getFromList().get(0).getCollectionName();
-		int schemaId = SchemaMetadata.getInstance().getCollectionMetadata(collectionName).getSchemaId();
-		shard = new Shard(schemaId, collectionName, collectionName);
+		shard = new Shard("");
 		return q.getPlan(shard);
 	}
 

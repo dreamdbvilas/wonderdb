@@ -1,3 +1,5 @@
+package org.wonderdb.txnlogger;
+
 /*******************************************************************************
  *    Copyright 2013 Vilas Athavale
  *
@@ -13,7 +15,6 @@
  *    See the License for the specific language governing permissions and
  *    limitations under the License.
  *******************************************************************************/
-package org.wonderdb.txnlogger;
 
 import java.io.File;
 import java.io.FileNotFoundException;
@@ -27,35 +28,27 @@ import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
-import java.util.Queue;
 import java.util.Set;
-import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import org.jboss.netty.buffer.ChannelBuffer;
 import org.jboss.netty.buffer.ChannelBuffers;
-import org.wonderdb.block.BlockPtr;
-import org.wonderdb.cache.CacheWriter;
-import org.wonderdb.seralizers.block.SerializedBlock;
+import org.wonderdb.cache.impl.CacheWriter;
 import org.wonderdb.seralizers.block.SerializedBlockImpl;
-import org.wonderdb.seralizers.block.TransactionLogSerializedBlock;
-import org.wonderdb.seralizers.block.TransactionLogSerializedBlockImpl;
 import org.wonderdb.server.WonderDBPropertyManager;
+import org.wonderdb.types.BlockPtr;
 
 public class LogManager {
 	AtomicInteger at = new AtomicInteger();
-	Queue<Integer> committingTxns = new ConcurrentLinkedQueue<Integer>();
-	Map<BlockPtr, SerializedBlock> blockPtrBlockMap = new HashMap<BlockPtr, SerializedBlock>();
+	Set<Integer> committingTxns = new HashSet<>();
+	Map<BlockPtr, SerializedBlockImpl> blockPtrBlockMap = new HashMap<BlockPtr, SerializedBlockImpl>();
 	
-	Map<Integer, List<BlockPtr>> blockPtrsInTxn = new HashMap<Integer, List<BlockPtr>>();
-	List<BlockPtr> blockPtrList = new ArrayList<BlockPtr>();
-	Map<Integer, List<Integer>> depTxnMap = new HashMap<Integer, List<Integer>>();
-	Queue<Integer> inflightTxns = new ConcurrentLinkedQueue<Integer>();
+	Map<Integer, Set<BlockPtr>> blockPtrsInTxn = new HashMap<>();
 	
 	List<RandomAccessFile> logFiles = new ArrayList<RandomAccessFile>();
 	int currentFilePosn = 0;
 	
-	CacheWriter writer = null;
+	CacheWriter<BlockPtr, ChannelBuffer> writer = null;
 	String filePath = "";
 	long currentMaxTxnTime = -1;
 	boolean loggingEnabled = false;
@@ -72,7 +65,7 @@ public class LogManager {
 		while (true) {
 			File file = null;
 			file = new File("./"+filePath+"/redolog"+logFiles.size());
-			if (file.exists() || logFiles.size() == 0) {
+			if (!file.exists()) {
 				try {
 					file.createNewFile();
 					RandomAccessFile raf = new RandomAccessFile(file, "rw");
@@ -80,7 +73,6 @@ public class LogManager {
 				} catch (FileNotFoundException e) {
 					e.printStackTrace();
 				} catch (IOException e) {
-					// TODO Auto-generated catch block
 					e.printStackTrace();
 				}
 			} else {
@@ -98,140 +90,125 @@ public class LogManager {
 			return null;
 		}
 		TransactionId txnId = new TransactionId(at.getAndAdd(1));
-		inflightTxns.add(txnId.getId());
-		depTxnMap.put(txnId.getId(), new ArrayList<Integer>());
-		List<BlockPtr> ptrList = new ArrayList<BlockPtr>();
+		Set<BlockPtr> ptrList = new HashSet<>();
 		blockPtrsInTxn.put(txnId.getId(), ptrList);
 		return txnId;
 	}
 	
-	public synchronized void logBlock(TransactionId txnId, SerializedBlock block) {
+	public synchronized void logBlock(TransactionId txnId, SerializedBlockImpl block) {
 		if (!loggingEnabled) {
 			return;
 		}
-		inflightTxns.remove(txnId.getId());
-		inflightTxns.add(txnId.getId());
-		long accessTime = System.currentTimeMillis();
-		block.setLastAccessTime(accessTime);
 		ChannelBuffer buffer = ChannelBuffers.copiedBuffer(block.getFullBuffer());
-		SerializedBlock sb = new SerializedBlockImpl(block.getPtr(), buffer);
+		SerializedBlockImpl sb = new SerializedBlockImpl(block.getPtr(), buffer);
 		blockPtrBlockMap.put(block.getPtr(), sb);
-		sb.setLastAccessTime(accessTime);
-		List<BlockPtr> ptrList = blockPtrsInTxn.get(txnId.getId());
-		ptrList.add(block.getPtr());
-		
-		boolean val = blockPtrList.remove(block.getPtr());
-		blockPtrList.add(block.getPtr());
-		
-		if (!val) {
-			return;
-		}
-		
-		Iterator<Integer> txnIdIter = blockPtrsInTxn.keySet().iterator();
-		List<Integer> thisTxnDepList= depTxnMap.get(txnId.getId());
-
-		while (txnIdIter.hasNext()) {
-			int id = txnIdIter.next();
-			if (id == txnId.getId()) {
-				continue;
-			}
-			List<BlockPtr> iterBlockPtrList = blockPtrsInTxn.get(id);
-			if (iterBlockPtrList.contains(block.getPtr())) {
-				if (!thisTxnDepList.contains(id)) {
-					thisTxnDepList.add(id);
-				}
-				
-				List<Integer> list = depTxnMap.get(id);
-				if (!list.contains(txnId.getId())) {
-					list.add(txnId.getId());
-				}
-			}
-		}
+		sb.setLastAccessTime(block.getLastAccessTime());
+		Set<BlockPtr> ptrList = blockPtrsInTxn.get(txnId.getId());
+		ptrList.add(block.getPtr());		
 	}
 	
-	public void commitTxn(TransactionId txnId) {
+	public synchronized void commitTxn(TransactionId txnId) {
 		if (!loggingEnabled) {
 			return;
 		}
 		if (txnId == null) {
 			return;
 		}
-		synchronized (committingTxns) {
-			committingTxns.add(txnId.getId());
-			logTransaction(txnId.getId());			
-		}
+		committingTxns.add(txnId.getId());
+		logTransaction(txnId.getId());			
 	}
 	
-	private void logTransaction(int txnId) {
+	private boolean shouldWait(int txnId, Set<Integer> dependetTxns) {
+		Set<BlockPtr> ptrList = blockPtrsInTxn.get(txnId);
+		Iterator<Integer> iter = blockPtrsInTxn.keySet().iterator();
+		while (iter.hasNext()) {
+			int txn = iter.next();
+			if (txn == txnId) {
+				continue;
+			}
+			
+			Set<BlockPtr> list = blockPtrsInTxn.get(txn);
+			Iterator<BlockPtr> txnPtrIter = ptrList.iterator();
+			
+			while (txnPtrIter.hasNext()) {
+				BlockPtr ptr = txnPtrIter.next();
+				if (list.contains(ptr) && !committingTxns.contains(txn)) {
+					dependetTxns.clear();
+					return true;
+				}
+
+				if (list.contains(ptr) && committingTxns.contains(txn)) {
+					dependetTxns.add(txn);					
+				}
+			}
+		}
+		
+		return false;
+	}
+	
+	private synchronized void logTransaction(int txnId) {
+		Set<Integer> dependentTxns = new HashSet<>();
 		while (true) {
 			if (!committingTxns.contains(txnId)) {
 				return;
 			}
-			if (committingTxns.peek() != txnId) {
+			if (shouldWait(txnId, dependentTxns)) {
 				try {
-					committingTxns.wait();
+					wait();
 				} catch (InterruptedException e) {
-					e.printStackTrace();
+					continue;
 				}
-			} else {				
-				committingTxns.poll();
-				List<Integer> depTxnIds = depTxnMap.get(txnId);
-				if (committingTxns.containsAll(depTxnIds)) {
-					break;
-				} 
-				committingTxns.add(txnId);
-				try {
-					committingTxns.wait();
-				} catch (InterruptedException e) {
-					e.printStackTrace();
-				}
+			} else {
+				break;
 			}
 		}
 		
-		List<BlockPtr> bpList = new ArrayList<BlockPtr>();
-		bpList.addAll(blockPtrsInTxn.get(txnId));
+		Set<BlockPtr> bpList = new HashSet<>();
+		bpList.addAll(blockPtrsInTxn.remove(txnId));
 		
-		List<Integer> depTxnIds = depTxnMap.get(txnId);
-		for (int i = 0; i < depTxnIds.size(); i++) {
-			bpList.addAll(blockPtrsInTxn.get(depTxnIds.get(i)));
+		Iterator<Integer> iter = dependentTxns.iterator();
+		while (iter.hasNext()) {
+			int txn = iter.next();
+			bpList.addAll(blockPtrsInTxn.remove(txn));
+
 		}
 		
 		Set<BlockPtr> bpSet = new HashSet<BlockPtr>(bpList);
 		
-		List<SerializedBlock> sblist = new ArrayList<SerializedBlock>();
-		Iterator<BlockPtr> iter = bpSet.iterator();
+		List<SerializedBlockImpl> sblist = new ArrayList<SerializedBlockImpl>();
+		Iterator<BlockPtr> iter1 = bpSet.iterator();
 		
-		while (iter.hasNext()) {
-			SerializedBlock sb = blockPtrBlockMap.get(iter.next()); 
+		while (iter1.hasNext()) {
+			SerializedBlockImpl sb = blockPtrBlockMap.remove(iter1.next()); 
 			sblist.add(sb);
 		}
-		blockPtrList.removeAll(bpList);
 		
 		write(sblist);
 		committingTxns.remove(txnId);
-		committingTxns.removeAll(depTxnIds);
-		depTxnMap.remove(txnId);
-		blockPtrsInTxn.remove(txnId);
-		committingTxns.notifyAll();
+		committingTxns.removeAll(dependentTxns);
+		notifyAll();
 	}	
 	
-	private void write(List<SerializedBlock> list) {
+	private void write(List<SerializedBlockImpl> list) {
 		if (list == null || list.size() == 0) {
 			return;
 		}
-		TransactionLogSerializedBlock tsb = new TransactionLogSerializedBlockImpl(list.get(0).getFullBuffer());
-		tsb.setTrnsactionBlockCount(list.size());
 		ChannelBuffer[] buffers = new ChannelBuffer[list.size()];
 		for (int i = 0; i < list.size(); i++) {
-			SerializedBlock sb = list.get(i);
+			SerializedBlockImpl sb = list.get(i);
 			buffers[i] = sb.getFullBuffer();
 			currentMaxTxnTime = Math.max(currentMaxTxnTime, sb.getLastAccessTime());
 		}
 		
-		ChannelBuffer buffer = ChannelBuffers.wrappedBuffer(buffers);
-		
+		ChannelBuffer buffer = ChannelBuffers.wrappedBuffer(buffers);		
+		ChannelBuffer header = ChannelBuffers.buffer(Integer.BYTES*2);
+		header.writeInt(buffer.capacity());
+		header.writeInt(buffer.hashCode());
+
+		ChannelBuffer wrapped = ChannelBuffers.wrappedBuffer(header, buffer);
 		FileChannel channel = getFileChannel(buffer.capacity());
-		ByteBuffer buf = buffer.toByteBuffer();
+		ByteBuffer buf = wrapped.toByteBuffer();
+		
 		try {
 			channel.write(buf);
 		} catch (IOException e) {
@@ -352,7 +329,6 @@ public class LogManager {
 						e.printStackTrace();
 					}
 				}
-				
 			}
 		}
 	}

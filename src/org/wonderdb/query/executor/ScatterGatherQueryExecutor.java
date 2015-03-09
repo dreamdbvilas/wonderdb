@@ -1,3 +1,5 @@
+package org.wonderdb.query.executor;
+
 /*******************************************************************************
  *    Copyright 2013 Vilas Athavale
  *
@@ -13,7 +15,6 @@
  *    See the License for the specific language governing permissions and
  *    limitations under the License.
  *******************************************************************************/
-package org.wonderdb.query.executor;
 
 import java.sql.Connection;
 import java.sql.ResultSet;
@@ -28,35 +29,32 @@ import java.util.concurrent.Future;
 
 import org.jboss.netty.buffer.ChannelBuffer;
 import org.jboss.netty.buffer.ChannelBuffers;
-import org.wonderdb.block.record.manager.ObjectId;
 import org.wonderdb.block.record.manager.TableRecordManager;
-import org.wonderdb.block.record.table.TableRecord;
 import org.wonderdb.cluster.ClusterManagerFactory;
 import org.wonderdb.cluster.Shard;
-import org.wonderdb.collection.StaticTableResultContent;
 import org.wonderdb.expression.AndExpression;
 import org.wonderdb.query.parse.DBDeleteQuery;
 import org.wonderdb.query.parse.DBInsertQuery;
 import org.wonderdb.query.parse.DBQuery;
-import org.wonderdb.query.parse.DBSelectQuery;
-import org.wonderdb.query.parse.DBSelectQuery.ResultSetValue;
 import org.wonderdb.query.parse.DBUpdateQuery;
+import org.wonderdb.query.parser.jtree.DBSelectQueryJTree;
+import org.wonderdb.query.parser.jtree.DBSelectQueryJTree.ResultSetValue;
 import org.wonderdb.query.sql.WonderDBConnection;
 import org.wonderdb.query.sql.WonderDBPreparedStatement;
 import org.wonderdb.server.WonderDBPropertyManager;
 import org.wonderdb.thread.ThreadPoolExecutorWrapper;
 import org.wonderdb.types.DBType;
-import org.wonderdb.types.impl.ColumnType;
-import org.wonderdb.types.impl.DoubleType;
-import org.wonderdb.types.impl.FloatType;
-import org.wonderdb.types.impl.IntType;
-import org.wonderdb.types.impl.LongType;
-import org.wonderdb.types.impl.StringType;
+import org.wonderdb.types.DoubleType;
+import org.wonderdb.types.FloatType;
+import org.wonderdb.types.IntType;
+import org.wonderdb.types.LongType;
+import org.wonderdb.types.StringType;
+
 
 public class ScatterGatherQueryExecutor {
 	static 	ThreadPoolExecutorWrapper executor = new ThreadPoolExecutorWrapper(WonderDBPropertyManager.getInstance().getWriterThreadPoolCoreSize(),
 			WonderDBPropertyManager.getInstance().getWriterThreadPoolMaxSize(), 5, 
-			WonderDBPropertyManager.getInstance().getWriterThreadPoolQueueSize());
+			WonderDBPropertyManager.getInstance().getWriterThreadPoolQueueSize(), "scatterGather");
 	
 			DBQuery query = null;
 			
@@ -71,7 +69,7 @@ public class ScatterGatherQueryExecutor {
 	public List<List<ResultSetValue>> selectQuery() {
 		List<List<ResultSetValue>> resultListList = new ArrayList<List<ResultSetValue>>();
 		AndExpression andExp = query.getExpression();
-		String tableName = ((DBSelectQuery) query).getFromList().get(0).getCollectionName();
+		String tableName = ((DBSelectQueryJTree) query).getFromList().get(0).getCollectionName();
 		List<Shard> shardIds = ClusterManagerFactory.getInstance().getClusterManager().getShards(tableName, andExp);
 		List<Future<List<List<ResultSetValue>>>> futures = new ArrayList<Future<List<List<ResultSetValue>>>>(); 
 		for (int i = 0; i < shardIds.size(); i++) {
@@ -79,10 +77,10 @@ public class ScatterGatherQueryExecutor {
 			Callable<List<List<ResultSetValue>>> task = null;
 			if (ClusterManagerFactory.getInstance().getClusterManager().isMaster(shard) || query.executeLocal()) {
 				// we should process
-				task = new LocalSelectTask(shardIds.get(i), (DBSelectQuery) query);
+				task = new LocalSelectTask(shardIds.get(i), (DBSelectQueryJTree) query);
 			} else {
 				// process with connection
-				task = new RemoteSelectTask((DBSelectQuery) query, shard); 
+				task = new RemoteSelectTask((DBSelectQueryJTree) query, shard); 
 			}
 			@SuppressWarnings("unchecked")
 			Future<List<List<ResultSetValue>>> future = (Future<List<List<ResultSetValue>>>) executor.asynchrounousExecute(task);
@@ -107,18 +105,27 @@ public class ScatterGatherQueryExecutor {
 	
 	public int insertQuery() {
 		DBInsertQuery q = (DBInsertQuery) query;
-		ObjectId id = new ObjectId(ClusterManagerFactory.getInstance().getClusterManager().getMachineId(), true);
-		Map<String, DBType> m = q.getInsertMap();
-		m.put("objectId", new StringType(id.toString()));
-		Map<ColumnType, DBType> map = TableRecordManager.getInstance().convertTypes(q.getCollectionName(), m);
-		TableRecord tr = new TableRecord(map);
-		StaticTableResultContent rc = new StaticTableResultContent(tr, null, 1);
-		Shard shard = ClusterManagerFactory.getInstance().getClusterManager().getShard(q.getCollectionName(), rc);
+//		ObjectId id = new ObjectId(ClusterManagerFactory.getInstance().getClusterManager().getMachineId(), true);
+		Map<Integer, DBType> m = q.getInsertMap();
+//		m.put("objectId", new StringType(id.toString()));
+//		Map<Integer, DBType> map = TableRecordManager.getInstance().convertTypes(q.getCollectionName(), m);
+//		Map<Integer, Column> recordMap = new HashMap<>();
+//		Iterator<Integer> iter = map.keySet().iterator();
+//		while (iter.hasNext()) {
+//			int key = iter.next();
+//			DBType dt = map.get(key);
+//			Column column = new Column(dt);
+//			recordMap.put(key, column);
+//		}
+//		TableRecord tr = new TableRecord(recordMap);
+//		StaticTableResultContent rc = new StaticTableResultContent(tr);
+//		Shard shard = ClusterManagerFactory.getInstance().getClusterManager().getShard(q.getCollectionName(), rc);
+		Shard shard = new Shard("");
 		
 		Callable<Integer> task = null;
 		if (ClusterManagerFactory.getInstance().getClusterManager().isMaster(shard) || query.executeLocal()) {
 			// we should process
-			task = new LocalInsertTask(shard, map);
+			task = new LocalInsertTask(shard, m);
 		} else {
 			// process with connection
 			task = new RemoteInsertTask(shard); 
@@ -207,7 +214,7 @@ public class ScatterGatherQueryExecutor {
 		try {
 			ResultSetMetaData rsMeta = rs.getMetaData();
 			while (rs.next()) {
-				List<ResultSetValue> list = new ArrayList<DBSelectQuery.ResultSetValue>();
+				List<ResultSetValue> list = new ArrayList<ResultSetValue>();
 				for (int i = 0; i < rsMeta.getColumnCount(); i++) {
 					ResultSetValue rsv = new ResultSetValue();
 					list.add(rsv);
@@ -264,8 +271,8 @@ public class ScatterGatherQueryExecutor {
 	public class RemoteSelectTask implements Callable<List<List<ResultSetValue>>> {
 		Connection connection = null;
 		Shard shard = null;
-		DBSelectQuery query = null;
-		public RemoteSelectTask(DBSelectQuery query, Shard shard) {
+		DBSelectQueryJTree query = null;
+		public RemoteSelectTask(DBSelectQueryJTree query, Shard shard) {
 			this.shard = shard;
 			this.query = query;
 		}
@@ -274,7 +281,7 @@ public class ScatterGatherQueryExecutor {
 		public List<List<ResultSetValue>> call() throws Exception {
 			WonderDBConnection connection = (WonderDBConnection) ClusterManagerFactory.getInstance().getClusterManager().getMasterConnection(shard);
 			try {
-				WonderDBPreparedStatement stmt = (WonderDBPreparedStatement) connection.prepareStatement(query.getQuery());
+				WonderDBPreparedStatement stmt = (WonderDBPreparedStatement) connection.prepareStatement(query.getQueryString());
 				ChannelBuffer buffer = ChannelBuffers.dynamicBuffer();
 				buffer.writeInt(query.getRawBuffer().capacity());
 				buffer.clear();
@@ -290,10 +297,10 @@ public class ScatterGatherQueryExecutor {
 	}
 	
 	public class LocalSelectTask implements Callable<List<List<ResultSetValue>>> {
-		DBSelectQuery query = null;
+		DBSelectQueryJTree query = null;
 		Shard shard = null;
 		
-		public LocalSelectTask(Shard shard, DBSelectQuery query) {
+		public LocalSelectTask(Shard shard, DBSelectQueryJTree query) {
 			this.query = query;
 			this.shard = shard;
 		}
@@ -305,9 +312,9 @@ public class ScatterGatherQueryExecutor {
 	}
 	
 	public class LocalInsertTask implements Callable<Integer> {
-		Map<ColumnType, DBType> map = null;
+		Map<Integer, DBType> map = null;
 		Shard shard = null;
-		public LocalInsertTask(Shard shard, Map<ColumnType, DBType> map) {
+		public LocalInsertTask(Shard shard, Map<Integer, DBType> map) {
 			this.map = map;
 			this.shard = shard;
 		}

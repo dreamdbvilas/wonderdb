@@ -25,12 +25,15 @@ import java.util.concurrent.TimeUnit;
 public class ThreadPoolExecutorWrapper {
 	ThreadPoolExecutor executor = null;
 	
-	public ThreadPoolExecutorWrapper() {
-		executor = new ThreadPoolExecutor(10, 50, 5, TimeUnit.MINUTES, new ArrayBlockingQueue<Runnable>(20));
+	public ThreadPoolExecutorWrapper(String name) {
+		WonderDBThreadFactory t = new WonderDBThreadFactory(name);
+		executor = new ThreadPoolExecutor (10, 50, 5, TimeUnit.MINUTES, new ArrayBlockingQueue<Runnable>(20), t);
+		
 	}
 	
-	public ThreadPoolExecutorWrapper(int coreSize, int maxSize, int keepAliveInMin, int queueSize) {
-		executor = new ThreadPoolExecutor(coreSize, maxSize, keepAliveInMin, TimeUnit.MINUTES, new ArrayBlockingQueue<Runnable>(queueSize));
+	public ThreadPoolExecutorWrapper(int coreSize, int maxSize, int keepAliveInMin, int queueSize, String name) {
+		WonderDBThreadFactory t = new WonderDBThreadFactory(name);		
+		executor = new ThreadPoolExecutor(coreSize, maxSize, keepAliveInMin, TimeUnit.MINUTES, new ArrayBlockingQueue<Runnable>(queueSize), t);
 	}
 	
 	public Object synchronousExecute(Callable<? extends Object> task) {

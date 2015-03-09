@@ -1,3 +1,5 @@
+package org.wonderdb.query.parse;
+
 /*******************************************************************************
  *    Copyright 2013 Vilas Athavale
  *
@@ -13,59 +15,90 @@
  *    See the License for the specific language governing permissions and
  *    limitations under the License.
  *******************************************************************************/
-package org.wonderdb.query.parse;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 
 import org.jboss.netty.buffer.ChannelBuffer;
-import org.wonderdb.block.record.manager.RecordId;
 import org.wonderdb.block.record.manager.TableRecordManager;
 import org.wonderdb.cluster.Shard;
 import org.wonderdb.expression.AndExpression;
-import org.wonderdb.expression.BasicExpression;
-import org.wonderdb.parser.UQLParser.DeleteStmt;
-import org.wonderdb.parser.UQLParser.SelectStmt;
-import org.wonderdb.parser.UQLParser.TableDef;
-import org.wonderdb.query.plan.CollectionAlias;
+import org.wonderdb.parser.TableDef;
+import org.wonderdb.parser.jtree.SimpleNode;
+import org.wonderdb.parser.jtree.SimpleNodeHelper;
+import org.wonderdb.parser.jtree.UQLParserTreeConstants;
+import org.wonderdb.query.parser.jtree.DBSelectQueryJTree;
+import org.wonderdb.schema.CollectionMetadata;
+import org.wonderdb.schema.SchemaMetadata;
+import org.wonderdb.types.ColumnNameMeta;
 import org.wonderdb.types.DBType;
+import org.wonderdb.types.RecordId;
+
 
 public class DBDeleteQuery extends BaseDBQuery {
-	DeleteStmt stmt = null;
-	List<DBType> bindParamList = null;
-	DBSelectQuery selQuery = null;
+	SimpleNode deleteNode = null;
+	List<CollectionAlias> caList = null;
+	Map<String, CollectionAlias> fromMap = null;
+	SimpleNode filterNode = null;
+	DBSelectQueryJTree selQuery = null;
 	AndExpression andExp = null;
 	
-	public DBDeleteQuery(String query, DeleteStmt stmt, List<DBType> bindParamList, int type, ChannelBuffer buffer) {
-		super(query, type, buffer);
-		this.stmt = stmt;
-		this.bindParamList = bindParamList;
+	public DBDeleteQuery(String q, SimpleNode query, int type, ChannelBuffer buffer) {
+		super(q, query, type, buffer);
+		this.deleteNode = query;
 
-		SelectStmt sStmt = new SelectStmt();
-		TableDef tDef = new TableDef();
-		tDef.alias = "";
-		tDef.table = stmt.table;
+		SimpleNode tableNode = SimpleNodeHelper.getInstance().getFirstNode(deleteNode, UQLParserTreeConstants.JJTTABLEDEF);
 		List<TableDef> tDefList = new ArrayList<TableDef>();
+		TableDef tDef = SimpleNodeHelper.getInstance().getTableDef(tableNode);
 		tDefList.add(tDef);
-		sStmt.tableDefList = tDefList;
-		sStmt.filter = stmt.filter;
-		List<String> list = new ArrayList<String>();
-		list.add("*");
-		sStmt.selectColList = list;
-		selQuery = new DBSelectQuery(query, sStmt, bindParamList, type, buffer);
-		andExp = new AndExpression(selQuery.expList);
+		caList = getCaList(tDefList);
+		fromMap = getFromMap(caList);
+		
+		filterNode = SimpleNodeHelper.getInstance().getFirstNode(deleteNode, UQLParserTreeConstants.JJTFILTEREXPRESSION);
+		CollectionMetadata colMeta = SchemaMetadata.getInstance().getCollectionMetadata(getCollection());
+		List<ColumnNameMeta> selectColumns = colMeta.getCollectionColumns();
+		CollectionAlias ca = caList.get(0);
+		List<Integer> columnIdList = new ArrayList<>(selectColumns.size());
+		Map<CollectionAlias, List<Integer>> selectColumnList = new HashMap<>();
+		selectColumnList.put(ca, columnIdList);
+		for (int i = 0; i < selectColumns.size(); i++) {
+			ColumnNameMeta cnm = selectColumns.get(i);
+			columnIdList.add(cnm.getCoulmnId());
+		}
+		selQuery = new DBSelectQueryJTree(getQueryString(), query, fromMap, selectColumnList, filterNode, type, buffer);
+		andExp = selQuery.getAndExpression();
 	}
 	
 	public String getCollection() {
-		return stmt.table;
+		return caList.get(0).getCollectionName();
 	}
 	
+	private List<CollectionAlias> getCaList(List<TableDef> list) {
+		List<CollectionAlias> retList = new ArrayList<>();
+		for (int i = 0; i < list.size(); i++) {
+			TableDef tDef = list.get(i);
+			CollectionAlias ca = new CollectionAlias(tDef.table, tDef.alias);
+			retList.add(ca);
+		}
+		
+		return retList;
+	}
 	
+	private Map<String, CollectionAlias> getFromMap(List<CollectionAlias> caList) {
+		Map<String, CollectionAlias> fromMap = new HashMap<>();
+		for (int i = 0; i < caList.size(); i++) {
+			CollectionAlias ca = caList.get(i);
+			fromMap.put(ca.getAlias(), ca);
+		}
+		return fromMap;
+	}
+	
+
 	public int execute(Shard shard) {
 		List<Map<CollectionAlias, RecordId>> recListList = selQuery.executeGetDC(shard);
-		List<BasicExpression> expList = selQuery.getExpList();
 		int count = 0;
 		for (int i = 0; i < recListList.size(); i++) {
 			Map<CollectionAlias, RecordId> recList = recListList.get(i);
@@ -74,13 +107,13 @@ public class DBDeleteQuery extends BaseDBQuery {
 				while (iter.hasNext()) {
 					CollectionAlias ca = iter.next();
 					RecordId recId = recList.get(ca);
-					count = count + TableRecordManager.getInstance().delete(stmt.table, shard, recId, expList);
+					count = count + TableRecordManager.getInstance().delete(getCollection(), shard, recId, filterNode, fromMap);
 				}
 			}
 		}
 		return count;
 	}
-	
+
 	@Override
 	public AndExpression getExpression() {
 		return andExp;

@@ -1,3 +1,11 @@
+package org.wonderdb.block;
+
+import java.util.List;
+
+import org.wonderdb.cache.Cacheable;
+import org.wonderdb.types.BlockPtr;
+import org.wonderdb.types.record.Record;
+
 /*******************************************************************************
  *    Copyright 2013 Vilas Athavale
  *
@@ -13,14 +21,8 @@
  *    See the License for the specific language governing permissions and
  *    limitations under the License.
  *******************************************************************************/
-package org.wonderdb.block;
 
-import org.wonderdb.types.Cacheable;
-
-
-
-
-public interface Block extends ExternalReference<BlockPtr, CacheableList>, Cacheable {
+public interface Block extends Cacheable<BlockPtr, List<Record>> {
 	BlockPtr getNext();
 	BlockPtr getPrev();
 	BlockPtr getParent();
@@ -34,7 +36,5 @@ public interface Block extends ExternalReference<BlockPtr, CacheableList>, Cache
 	void readLock();
 	void readUnlock();
 	
-	public int getSchemaObjectId();
-	public int addEntry(int posn, Cacheable c);
-	public int getBlockCount();
+	void setData(List<Record> records);
 }

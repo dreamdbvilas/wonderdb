@@ -1,3 +1,5 @@
+package org.wonderdb.query.plan;
+
 /*******************************************************************************
  *    Copyright 2013 Vilas Athavale
  *
@@ -13,7 +15,6 @@
  *    See the License for the specific language governing permissions and
  *    limitations under the License.
  *******************************************************************************/
-package org.wonderdb.query.plan;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -24,21 +25,18 @@ import java.util.Map;
 import java.util.Set;
 import java.util.Stack;
 
-import org.wonderdb.block.BlockPtr;
 import org.wonderdb.cluster.Shard;
+import org.wonderdb.core.collection.WonderDBList;
 import org.wonderdb.expression.AndExpression;
 import org.wonderdb.expression.BasicExpression;
 import org.wonderdb.expression.Expression;
 import org.wonderdb.expression.Operand;
-import org.wonderdb.expression.StaticOperand;
 import org.wonderdb.expression.VariableOperand;
-import org.wonderdb.schema.CollectionColumn;
-import org.wonderdb.schema.Index;
-import org.wonderdb.schema.IndexMetadata;
+import org.wonderdb.query.parse.CollectionAlias;
+import org.wonderdb.query.parse.StaticOperand;
+import org.wonderdb.schema.CollectionMetadata;
 import org.wonderdb.schema.SchemaMetadata;
-import org.wonderdb.types.impl.ColumnType;
-
-
+import org.wonderdb.types.IndexNameMeta;
 
 public class QueryPlanBuilder {
 	private static QueryPlanBuilder builder = new QueryPlanBuilder();
@@ -49,12 +47,14 @@ public class QueryPlanBuilder {
 		return builder;
 	}
 	
-	public List<QueryPlan> build(List<CollectionAlias> collectionNames, Shard shard, AndExpression exp, Set<BlockPtr> pinnedBlocks) {
+	public List<QueryPlan> build(List<CollectionAlias> collectionNames, Shard shard, AndExpression exp, Set<Object> pinnedBlocks) {
 		List<QueryPlan> qPlan = new ArrayList<QueryPlan>();
-
+		
 		if (exp == null || exp.getExpList() == null || exp.getExpList().size() == 0) {
 			for (int i = 0; i < collectionNames.size(); i++) {
-				qPlan.add(new FullTableScan(collectionNames.get(i), pinnedBlocks));
+				CollectionMetadata colMeta = SchemaMetadata.getInstance().getCollectionMetadata(collectionNames.get(i).getCollectionName());
+				WonderDBList dbList = colMeta.getRecordList(new Shard(""));
+				qPlan.add(new FullTableScan(dbList, collectionNames.get(i), pinnedBlocks));
 			}
 			return qPlan;
 		}
@@ -62,9 +62,11 @@ public class QueryPlanBuilder {
 		List<BasicExpression> list1 = exp.getExpList();
 		List<BasicExpression> list = filterNonIndexable(list1);
 		
-		if (list == null || list.size() == 0) {
+		if (list == null || list.size() == 0 ) {
 			for (int i = 0; i < collectionNames.size(); i++) {
-				qPlan.add(new FullTableScan(collectionNames.get(i), pinnedBlocks));
+				CollectionMetadata colMeta = SchemaMetadata.getInstance().getCollectionMetadata(collectionNames.get(i).getCollectionName());
+				WonderDBList dbList = colMeta.getRecordList(new Shard(""));
+				qPlan.add(new FullTableScan(dbList, collectionNames.get(i), pinnedBlocks));
 			}
 		}
 	
@@ -73,14 +75,17 @@ public class QueryPlanBuilder {
 		
 		while (reducedCollections.size() < collectionNames.size()) {
 			List<BasicExpression> staticExpressions = getStaticExpressions(list, reducedCollections);
-			Map<CollectionAlias, Set<ColumnType>> staticCollectionsMap = separateColumnsByCollections(staticExpressions);
-			Map<CollectionAlias, Index> bestStaticCollectionsIndex = getBestMatchIndex(staticCollectionsMap, reducedCollections);
+			Map<CollectionAlias, Set<Integer>> staticCollectionsMap = separateColumnsByCollections(staticExpressions);
+			Map<CollectionAlias, IndexNameMeta> bestStaticCollectionsIndex = getBestMatchIndex(staticCollectionsMap, reducedCollections);
 			if (bestStaticCollectionsIndex.size() == 0) {
 				for (int i = 0; i < collectionNames.size(); i++) {
 					CollectionAlias ca = collectionNames.get(i);
+					
 					if (!reducedCollections.contains(ca)) {
+						CollectionMetadata colMeta = SchemaMetadata.getInstance().getCollectionMetadata(ca.getCollectionName());
+						WonderDBList dbList = colMeta.getRecordList(new Shard(""));
 						reducedCollections.add(ca);
-						qPlan.add(new FullTableScan(ca, pinnedBlocks));
+						qPlan.add(new FullTableScan(dbList, ca, pinnedBlocks));
 						break;
 					}
 				}
@@ -186,8 +191,8 @@ public class QueryPlanBuilder {
 	}
 	
 	private boolean isReducible(IndexRangeScan p, List<BasicExpression> expList, Set<CollectionAlias> availableCollections) {
-		Index idx = p.getIndex();
-		List<CollectionColumn> indexCols = idx.getColumnList();
+		IndexNameMeta idx = p.getIndex();
+		List<Integer> indexCols = idx.getColumnIdList();
 		CollectionAlias ca = p.getCollectionAlias();
 		
 		for (int i = 0; i < expList.size(); i++) {
@@ -197,7 +202,7 @@ public class QueryPlanBuilder {
 			if (l instanceof VariableOperand) {
 				VariableOperand left = (VariableOperand) l;
 				if (left.getCollectionAlias().equals(ca)) {
-					if (left.getColumnType().equals(indexCols.get(0).getColumnType())) {
+					if (left.getColumnId().equals(indexCols.get(0))) {
 						if (r instanceof StaticOperand) {
 							return true;
 						}
@@ -225,7 +230,7 @@ public class QueryPlanBuilder {
 			if (r instanceof VariableOperand) {
 				VariableOperand right = (VariableOperand) r;
 				if (right.getCollectionAlias().equals(ca)) {
-					if (right.getColumnType().equals(indexCols.get(0).getColumnType())) {
+					if (right.getColumnId().equals(indexCols.get(0))) {
 						if (l instanceof StaticOperand) {
 							return true;
 						}
@@ -287,8 +292,9 @@ public class QueryPlanBuilder {
 	private boolean isReachable(IndexRangeScan irs, Map<CollectionAlias, Set<String>> reachableColumns, List<BasicExpression> expList) {
 		Set<String> idxCols = new HashSet<String>();
 		
-		for (int i = 0; i < irs.getIndex().getColumnList().size(); i++) {
-			idxCols.add(irs.getIndex().getColumnList().get(i).getColumnName());
+		for (int i = 0; i < irs.getIndex().getColumnIdList().size(); i++) {
+			String columnName = SchemaMetadata.getInstance().getColumnName(irs.getIndex().getCollectionName(), irs.getIndex().getColumnIdList().get(i));
+			idxCols.add(columnName);
 		}
 		
 		for (int i = 0; i < expList.size(); i++) {
@@ -297,7 +303,7 @@ public class QueryPlanBuilder {
 			VariableOperand l = null;
 			if (left instanceof VariableOperand) {
 				l = (VariableOperand) left;
-				if (l.getCollectionAlias().equals(irs.collectionAlias) && idxCols.contains(l.getColumnType())) {
+				if (l.getCollectionAlias().equals(irs.collectionAlias) && idxCols.contains(l.getColumnId())) {
 //					if (right instanceof StaticOperand)
 				}
 			}
@@ -306,13 +312,13 @@ public class QueryPlanBuilder {
 	}
 	
 	
-	private boolean isOneStaticIndex(Operand o, Map<CollectionAlias, Index> bestMatchIndex) {
+	private boolean isOneStaticIndex(Operand o, Map<CollectionAlias, IndexNameMeta> bestMatchIndex) {
 		boolean oneStaticIndex = false;
 		if (o instanceof VariableOperand) {
 			VariableOperand vo = (VariableOperand) o;
 			CollectionAlias ca = new CollectionAlias(vo.getCollectionAlias());
-			Index idx = bestMatchIndex.get(ca);
-			if (idx != null && idx.getColumnList().get(0).getColumnType().equals(vo.getColumnType())) {
+			IndexNameMeta idx = bestMatchIndex.get(ca);
+			if (idx != null && idx.getColumnIdList().get(0) == vo.getColumnId()) {
 				// we found it!
 				// we will use index all the way
 				oneStaticIndex = true;
@@ -322,7 +328,7 @@ public class QueryPlanBuilder {
 	}
 	
 	@SuppressWarnings("unused")
-	private boolean isOneStaticIndex(List<BasicExpression> list, Map<CollectionAlias, Index> bestMatchIndex) {
+	private boolean isOneStaticIndex(List<BasicExpression> list, Map<CollectionAlias, IndexNameMeta> bestMatchIndex) {
 		boolean oneStaticIndex = false;
 		for (int i = 0; i < list.size(); i++) {
 			BasicExpression bexp = list.get(i);
@@ -367,14 +373,14 @@ public class QueryPlanBuilder {
 	}
 	
 	
-	private Map<CollectionAlias, Index> getBestMatchIndex(Map<CollectionAlias, Set<ColumnType>> map, Set<CollectionAlias> reducedCollections) {
-		Map<CollectionAlias, Index> retMap = new HashMap<CollectionAlias, Index>();
+	private Map<CollectionAlias, IndexNameMeta> getBestMatchIndex(Map<CollectionAlias, Set<Integer>> map, Set<CollectionAlias> reducedCollections) {
+		Map<CollectionAlias, IndexNameMeta> retMap = new HashMap<CollectionAlias, IndexNameMeta>();
 		Iterator<CollectionAlias> iter = map.keySet().iterator();
 		while (iter.hasNext()) {
 			CollectionAlias collectionName = iter.next();
 			if (!reducedCollections.contains(collectionName)) {
-				Set<ColumnType> colSet = map.get(collectionName);
-				Index idx = getBestMatchIndex(collectionName, colSet);
+				Set<Integer> colSet = map.get(collectionName);
+				IndexNameMeta idx = getBestMatchIndex(collectionName, colSet);
 				if (idx != null) {
 					retMap.put(collectionName, getBestMatchIndex(collectionName, colSet));
 				}
@@ -383,34 +389,34 @@ public class QueryPlanBuilder {
 		return retMap;
 	}
 
-	Index getBestMatchIndex(CollectionAlias collectionAlias, Set<ColumnType> colSet) {
-		List<IndexMetadata> idxList = SchemaMetadata.getInstance().getIndexes(collectionAlias.collectionName);
+	IndexNameMeta getBestMatchIndex(CollectionAlias collectionAlias, Set<Integer> colSet) {
+		List<IndexNameMeta> idxList = SchemaMetadata.getInstance().getIndexes(collectionAlias.getCollectionName());
 		if (idxList == null || idxList.size() == 0) {
 			return null;
 		}
 		
 		int maxMatchCount = 0;
-		Index currentBestIndex = null;
+		IndexNameMeta currentBestIndex = null;
 		for (int i = 0; i < idxList.size(); i++) {
 			int colMatchCount = 0;
-			IndexMetadata meta = idxList.get(i);
-			List<CollectionColumn> colList = meta.getIndex().getColumnList();
+			IndexNameMeta meta = idxList.get(i);
+			List<Integer> colList = meta.getColumnIdList();
 			for (int x = 0; x < colList.size(); x++) {
-				CollectionColumn col = colList.get(x);
-				if (colSet.contains(col.getColumnType())) {
+				Integer col = colList.get(x);
+				if (colSet.contains(col)) {
 					colMatchCount++;
 				}
 			}
 			if (colMatchCount > maxMatchCount) {
 				maxMatchCount = colMatchCount;
-				currentBestIndex = meta.getIndex();
+				currentBestIndex = meta;
 			}
 		}
 		return currentBestIndex;
 	}
 	
-	private Map<CollectionAlias, Set<ColumnType>> separateColumnsByCollections(List<BasicExpression> list) {
-		Map<CollectionAlias, Set<ColumnType>> map = new HashMap<CollectionAlias, Set<ColumnType>>();
+	private Map<CollectionAlias, Set<Integer>> separateColumnsByCollections(List<BasicExpression> list) {
+		Map<CollectionAlias, Set<Integer>> map = new HashMap<CollectionAlias, Set<Integer>>();
 		
 		for (int i = 0; i < list.size(); i++) {
 			BasicExpression exp = list.get(i);
@@ -428,13 +434,13 @@ public class QueryPlanBuilder {
 		return map;
 	}
 	
-	private void operandToColumn(VariableOperand vo, Map<CollectionAlias, Set<ColumnType>> map) {
-		Set<ColumnType> s = map.get(vo.getCollectionAlias());
+	private void operandToColumn(VariableOperand vo, Map<CollectionAlias, Set<Integer>> map) {
+		Set<Integer> s = map.get(vo.getCollectionAlias());
 		if (s == null) {
-			s = new HashSet<ColumnType>();
+			s = new HashSet<Integer>();
 			map.put(new CollectionAlias(vo.getCollectionAlias()), s);
 		}
-		s.add(vo.getColumnType());
+		s.add(vo.getColumnId());
 	}	
 	
 	@SuppressWarnings("unused")

@@ -1,3 +1,5 @@
+package org.wonderdb.collection;
+
 /*******************************************************************************
  *    Copyright 2013 Vilas Athavale
  *
@@ -13,19 +15,15 @@
  *    See the License for the specific language governing permissions and
  *    limitations under the License.
  *******************************************************************************/
-package org.wonderdb.collection;
 
 import java.util.Map;
 
-import org.wonderdb.block.record.manager.RecordId;
 import org.wonderdb.types.DBType;
-import org.wonderdb.types.impl.ColumnType;
+import org.wonderdb.types.RecordId;
 
 
 public interface ResultContent {	
-	public DBType getValue(ColumnType ct, String path);
-	Map<ColumnType, DBType> getAllColumns();
+	public DBType getValue(Integer ct);
+	Map<Integer, DBType> getAllColumns();
 	RecordId getRecordId();
-	public int getSchemaId();
-	public int getCollectionSchemaId();
 }

@@ -1,3 +1,5 @@
+package org.wonderdb.cluster;
+
 /*******************************************************************************
  *    Copyright 2013 Vilas Athavale
  *
@@ -13,25 +15,24 @@
  *    See the License for the specific language governing permissions and
  *    limitations under the License.
  *******************************************************************************/
-package org.wonderdb.cluster;
 
 import java.sql.Connection;
 import java.util.List;
 
-import org.wonderdb.collection.ResultContent;
-import org.wonderdb.collection.exceptions.InvalidCollectionNameException;
-import org.wonderdb.collection.exceptions.InvalidIndexException;
+import org.wonderdb.exception.InvalidCollectionNameException;
+import org.wonderdb.exception.InvalidIndexException;
 import org.wonderdb.expression.AndExpression;
-import org.wonderdb.schema.CollectionColumn;
-import org.wonderdb.types.impl.IndexKeyType;
+import org.wonderdb.types.ColumnNameMeta;
+import org.wonderdb.types.IndexKeyType;
+
 
 public interface ClusterManager {
 
 	public abstract void createCollection(String collectionName, String fileName, boolean isLoggingEnabled,
-			List<CollectionColumn> columns, String replicaSet) throws InvalidCollectionNameException;
+			List<ColumnNameMeta> columns, String replicaSet) throws InvalidCollectionNameException;
 
 	public abstract void createIndex(String collectionName, String indexName, 
-			String storageFile, List<CollectionColumn> columns, 
+			String storageFile, List<ColumnNameMeta> columns, 
 			boolean isUnique, boolean isAsc) throws InvalidIndexException;
 	
 	public abstract void createReplicaSet(String replicaSetName);
@@ -51,7 +52,7 @@ public interface ClusterManager {
 
 	public abstract boolean isParticipating(Shard shard);
 
-	public abstract Shard getShard(String collectionName, ResultContent rc);
+//	public abstract Shard getShard(String collectionName, ResultContent rc);
 
 	public abstract List<Shard> getShards(String collectionName, AndExpression expList);
 
@@ -61,7 +62,7 @@ public interface ClusterManager {
 
 	public abstract String getMachineId();
 	
-	public void addColumns(String collectionName, List<CollectionColumn> list);
+	public void addColumns(String collectionName, List<ColumnNameMeta> list);
 
 	public void init();
 	

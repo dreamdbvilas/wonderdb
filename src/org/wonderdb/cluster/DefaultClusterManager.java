@@ -1,3 +1,5 @@
+package org.wonderdb.cluster;
+
 /*******************************************************************************
  *    Copyright 2013 Vilas Athavale
  *
@@ -13,19 +15,17 @@
  *    See the License for the specific language governing permissions and
  *    limitations under the License.
  *******************************************************************************/
-package org.wonderdb.cluster;
 
 import java.sql.Connection;
 import java.util.ArrayList;
 import java.util.List;
 
-import org.wonderdb.collection.ResultContent;
-import org.wonderdb.collection.exceptions.InvalidCollectionNameException;
-import org.wonderdb.collection.exceptions.InvalidIndexException;
+import org.wonderdb.exception.InvalidCollectionNameException;
+import org.wonderdb.exception.InvalidIndexException;
 import org.wonderdb.expression.AndExpression;
-import org.wonderdb.schema.CollectionColumn;
-import org.wonderdb.schema.SchemaMetadata;
-import org.wonderdb.types.impl.IndexKeyType;
+import org.wonderdb.types.ColumnNameMeta;
+import org.wonderdb.types.IndexKeyType;
+
 
 
 public class DefaultClusterManager implements ClusterManager {
@@ -37,10 +37,6 @@ public class DefaultClusterManager implements ClusterManager {
 	/* (non-Javadoc)
 	 * @see org.wonderdb.cluster.ClusterManager#createCollection(java.lang.String, java.lang.String)
 	 */
-	@Override
-	public void createCollection(String collectionName, String fileName, boolean isLoggingEnabled,
-			List<CollectionColumn> columns, String replicaSet) throws InvalidCollectionNameException {
-	}
 	
 	/* (non-Javadoc)
 	 * @see org.wonderdb.cluster.ClusterManager#createReplicaSet(java.lang.String)
@@ -95,8 +91,8 @@ public class DefaultClusterManager implements ClusterManager {
 	@Override
 	public List<Shard> getShards(String collectionName) {
 		List<Shard> shards = new ArrayList<Shard>();
-		int schemaId = SchemaMetadata.getInstance().getCollectionMetadata(collectionName).getSchemaId();
-		Shard shard = new Shard(schemaId, collectionName, collectionName);
+//		int schemaId = SchemaMetadata.getInstance().getWonderDBList(collectionName);
+		Shard shard = new Shard("");
 		shards.add(shard);
 		return shards;
 	}
@@ -109,23 +105,15 @@ public class DefaultClusterManager implements ClusterManager {
 		return true;
 	}
 	
-	/* (non-Javadoc)
-	 * @see org.wonderdb.cluster.ClusterManager#getShardId(org.wonderdb.block.record.table.TableRecord)
-	 */
-	@Override
-	public Shard getShard(String collectionName, ResultContent rc) {
-		int schemaId = SchemaMetadata.getInstance().getCollectionMetadata(collectionName).getSchemaId();
-		return new Shard(schemaId, collectionName, collectionName);
-	}
 	
 	/* (non-Javadoc)
 	 * @see org.wonderdb.cluster.ClusterManager#getShards(org.wonderdb.expression.AndExpression)
 	 */
 	@Override
 	public List<Shard> getShards(String collectionName, AndExpression expList) {
-		int schemaId = SchemaMetadata.getInstance().getCollectionMetadata(collectionName).getSchemaId();
+//		int schemaId = SchemaMetadata.getInstance().getWonderDBList(collectionName).getSchemaId();
 		List<Shard> shards = new ArrayList<Shard>();
-		shards.add(new Shard(schemaId, collectionName, collectionName));
+		shards.add(new Shard(""));
 		return shards;
 	}
 	
@@ -142,20 +130,26 @@ public class DefaultClusterManager implements ClusterManager {
 	}
 
 	@Override
-	public void createIndex(String collectionName, String indexName, 
-			String storageFile, List<CollectionColumn> columns, 
-			boolean isUnique, boolean isAsc) throws InvalidIndexException {
-	}
-
-	@Override
 	public void init() {
 	}
 
 	@Override
-	public void addColumns(String collectionName, List<CollectionColumn> list) {
+	public void shutdown() {
 	}
 
 	@Override
-	public void shutdown() {
+	public void createCollection(String collectionName, String fileName,
+			boolean isLoggingEnabled, List<ColumnNameMeta> columns,
+			String replicaSet) throws InvalidCollectionNameException {
+	}
+
+	@Override
+	public void createIndex(String collectionName, String indexName,
+			String storageFile, List<ColumnNameMeta> columns, boolean isUnique,
+			boolean isAsc) throws InvalidIndexException {
+	}
+
+	@Override
+	public void addColumns(String collectionName, List<ColumnNameMeta> list) {
 	}
 }

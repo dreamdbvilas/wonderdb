@@ -1,3 +1,5 @@
+package org.wonderdb.collection;
+
 /*******************************************************************************
  *    Copyright 2013 Vilas Athavale
  *
@@ -13,61 +15,56 @@
  *    See the License for the specific language governing permissions and
  *    limitations under the License.
  *******************************************************************************/
-package org.wonderdb.collection;
 
-import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-import org.wonderdb.block.record.manager.RecordId;
-import org.wonderdb.schema.CollectionColumn;
-import org.wonderdb.schema.IndexMetadata;
-import org.wonderdb.schema.SchemaMetadata;
 import org.wonderdb.types.DBType;
-import org.wonderdb.types.impl.ColumnType;
-import org.wonderdb.types.impl.IndexKeyType;
+import org.wonderdb.types.ExtendedColumn;
+import org.wonderdb.types.IndexKeyType;
+import org.wonderdb.types.IndexRecordMetadata;
+import org.wonderdb.types.RecordId;
+import org.wonderdb.types.TypeMetadata;
+import org.wonderdb.types.UndefinedType;
+import org.wonderdb.types.record.IndexRecord;
 
 
-public class IndexResultContent implements ResultContent {
+
+public class IndexResultContent extends IndexRecord implements ResultContent {
 	IndexKeyType ikt = null;
-	int schemaId = -1;
+	IndexRecordMetadata meta = null;
 	
-	public IndexResultContent(IndexKeyType ikt, int schemaId) {
+	public IndexResultContent(IndexKeyType ikt, TypeMetadata meta) {
 		this.ikt = ikt;
-		this.schemaId = schemaId;
+		this.meta = (IndexRecordMetadata) meta;
 	}
 	
 	@Override
-	public DBType getValue(ColumnType ct, String path) {
-		IndexMetadata idxMeta = SchemaMetadata.getInstance().getIndex(schemaId);
-		List<CollectionColumn> list = idxMeta.getIndex().getColumnList();
-		CollectionColumn cc = new CollectionColumn(null, (Integer) ct.getValue(), null, true, false);
-		int i = Collections.binarySearch(list, cc);
-		if (i >= 0) {
-			return ikt.getValue().get(i);
+	public DBType getValue(Integer ct) {
+		List<Integer> list = meta.getColumnIdList();
+		int posn = list.indexOf(ct);
+		if (posn >= 0) {
+			DBType dt = ikt.getValue().get(posn);
+			if (dt instanceof ExtendedColumn) {
+				return ((ExtendedColumn) dt).getValue();
+			}
 		}
-		throw new ValueNotAvailableException();
+		return UndefinedType.getInstance();
 	}
 	
 	@Override
-	public Map<ColumnType, DBType> getAllColumns() {
-		throw new RuntimeException("Method not found");
+	public Map<Integer, DBType> getAllColumns() {
+		Map<Integer, DBType> map = new HashMap<>();
+		for (int i = 0; i < meta.getColumnIdList().size(); i++) {
+			map.put(meta.getColumnIdList().get(i), ikt.getValue().get(i));
+		}
+		return map;
 	}
 
 	
 	@Override
 	public RecordId getRecordId() {
 		return ikt.getRecordId();
-	}
-
-	@Override
-	public int getSchemaId() {
-		return schemaId;
-	}
-
-	@Override
-	public int getCollectionSchemaId() {
-		IndexMetadata idxMeta = SchemaMetadata.getInstance().getIndex(schemaId);
-		return SchemaMetadata.getInstance().getCollectionMetadata(idxMeta.getIndex().getCollectionName()).getSchemaId();
 	}
 }

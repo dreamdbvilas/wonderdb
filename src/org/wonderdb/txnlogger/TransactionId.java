@@ -1,3 +1,5 @@
+package org.wonderdb.txnlogger;
+
 /*******************************************************************************
  *    Copyright 2013 Vilas Athavale
  *
@@ -13,7 +15,6 @@
  *    See the License for the specific language governing permissions and
  *    limitations under the License.
  *******************************************************************************/
-package org.wonderdb.txnlogger;
 
 public class TransactionId {
 	int txnId = -1;

@@ -1,3 +1,5 @@
+package org.wonderdb.query.parse;
+
 /*******************************************************************************
  *    Copyright 2013 Vilas Athavale
  *
@@ -13,7 +15,6 @@
  *    See the License for the specific language governing permissions and
  *    limitations under the License.
  *******************************************************************************/
-package org.wonderdb.query.parse;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -21,29 +22,44 @@ import java.util.List;
 import java.util.Map;
 
 import org.jboss.netty.buffer.ChannelBuffer;
-import org.wonderdb.collection.exceptions.InvalidCollectionNameException;
+import org.wonderdb.exception.InvalidCollectionNameException;
 import org.wonderdb.expression.AndExpression;
-import org.wonderdb.parser.UQLParser.InsertStmt;
+import org.wonderdb.parser.jtree.Node;
+import org.wonderdb.parser.jtree.QueryEvaluator;
+import org.wonderdb.parser.jtree.SimpleNode;
+import org.wonderdb.parser.jtree.SimpleNodeHelper;
+import org.wonderdb.parser.jtree.UQLParserTreeConstants;
 import org.wonderdb.query.executor.ScatterGatherQueryExecutor;
+import org.wonderdb.query.plan.DataContext;
+import org.wonderdb.schema.CollectionMetadata;
+import org.wonderdb.schema.SchemaMetadata;
+import org.wonderdb.serialize.SerializerManager;
 import org.wonderdb.types.DBType;
-import org.wonderdb.types.impl.StringType;
+import org.wonderdb.types.DoubleType;
+import org.wonderdb.types.FloatType;
+import org.wonderdb.types.IntType;
+import org.wonderdb.types.LongType;
+import org.wonderdb.types.StringType;
+
 
 
 
 public class DBInsertQuery extends BaseDBQuery {
-	InsertStmt stmt;
-	Map<String, DBType> map = new HashMap<String, DBType>();
+	Map<Integer, DBType> map = new HashMap<>();
 	String collectionName;
-	List<DBType> bindParamList = new ArrayList<DBType>();
 	int currentBindPosn = 0;
 	AndExpression andExp = null;
 	static long count = -1;
+	DataContext context = null;
 	
-	public DBInsertQuery(String query, InsertStmt stmt, List<DBType> bindParamList, int type, ChannelBuffer buffer) {
-		super(query, type, buffer);
-		this.stmt = stmt;
-		collectionName = stmt.table;
-		this.bindParamList = bindParamList;
+	public DBInsertQuery(String q, Node qry, int type, DataContext context, ChannelBuffer buffer) {
+		super(q, (SimpleNode) qry, type, buffer);
+		this.context = context;
+		SimpleNode query = (SimpleNode) qry;
+		SimpleNode node = SimpleNodeHelper.getInstance().getFirstNode(query, UQLParserTreeConstants.JJTTABLENAME);
+		if (node != null) {
+			collectionName = node.jjtGetFirstToken().image;
+		}
 		buildMap();
 	}
 	
@@ -51,7 +67,7 @@ public class DBInsertQuery extends BaseDBQuery {
 		return collectionName;
 	}
 	
-	public Map<String, DBType> getInsertMap() {
+	public Map<Integer, DBType> getInsertMap() {
 		return map;
 	}
 	
@@ -59,18 +75,174 @@ public class DBInsertQuery extends BaseDBQuery {
 		return null;
 	}
 	
-	public List<DBType> getBindParamList() {
-		return bindParamList;
-	}
-	
 	private void buildMap() {
-		for (int i = 0; i < stmt.columns.size(); i++) {
-			String colName = stmt.columns.get(i);
-			DBType type = getValue(stmt.values.list.get(i));
-			map.put(colName, type);
+		SimpleNode node = SimpleNodeHelper.getInstance().getFirstNode(queryNode, UQLParserTreeConstants.JJTINSERTCOLUMNLIST);
+		List<SimpleNode> nodeList = new ArrayList<>();
+		SimpleNodeHelper.getInstance().getNodes(node, UQLParserTreeConstants.JJTCOLUMNANDALIAS, nodeList);
+		Map<String, CollectionAlias> fromMap = new HashMap<>();
+		fromMap.put("", new CollectionAlias(collectionName, ""));
+		QueryEvaluator qe = new QueryEvaluator(fromMap, context);
+		node = SimpleNodeHelper.getInstance().getFirstNode(queryNode, UQLParserTreeConstants.JJTLITERALLIST);
+		List<SimpleNode> valueList = new ArrayList<>();
+		CollectionMetadata colMeta = SchemaMetadata.getInstance().getCollectionMetadata(collectionName);
+		SimpleNodeHelper.getInstance().getNodes(node, UQLParserTreeConstants.JJTUNARYEXPRESSION, valueList);
+		for (int i = 0; i < nodeList.size(); i++) {
+			String colName = nodeList.get(i).jjtGetFirstToken().image;
+			SimpleNode value = valueList.get(i);
+			qe.processUnaryExpression(value);
+			Object val = value.jjtGetValue();
+			int colId = colMeta.getColumnId(colName);
+			DBType dt = castToDBType(colName, val);
+			map.put(colId, dt);
 		}
 	}
 	
+	private DBType castToDBType(String colName, Object o) {
+		CollectionMetadata colMeta = SchemaMetadata.getInstance().getCollectionMetadata(collectionName);
+		int type = colMeta.getColumnType(colName);
+		if (o instanceof String) {
+			return convertToDBType((String) o, type);
+		}
+		
+		if (o instanceof Integer) {
+			return convertToDBType( (Integer) o, type);
+		}
+		
+		if (o instanceof Long) {
+			return convertToDBType( (Long) o, type);
+		}
+		
+		if (o instanceof Double) {
+			return convertToDBType( (Double) o, type);
+		}
+		
+		if (o instanceof Float) {
+			return convertToDBType( (Float) o, type);
+		}
+		
+		return null;
+	}
+	
+	public static DBType convertToDBType(String s, int type) {
+		switch (type) {
+		case SerializerManager.STRING:
+			return new StringType(s);
+		case SerializerManager.INT:
+			return new IntType(Integer.parseInt(s));
+		case SerializerManager.LONG:
+			return new LongType(Long.parseLong(s));
+		case SerializerManager.DOUBLE:
+			return new DoubleType(Double.parseDouble(s));
+		case SerializerManager.FLOAT:
+			return new FloatType(Float.parseFloat(s));
+		default:
+			return null;
+		}
+	}
+
+	public static DBType convertToDBType(Object o, int type) {
+		if (o == null) {
+			return SerializerManager.getInstance().getSerializer(type).getNull(type);
+		}
+		
+		if (o instanceof String) {
+			return convertToDBType((String) o, type);
+		}
+		
+		if (o instanceof Integer) {
+			return convertToDBType((Integer) o, type);
+		}
+		
+		if (o instanceof Long) {
+			return convertToDBType((Long) o, type);
+		}
+		
+		if (o instanceof Double) {
+			return convertToDBType((Double) o, type);
+		}
+		
+		if (o instanceof Float) {
+			return convertToDBType((Float) o, type);
+		}
+		
+		if (o instanceof StringType) {
+			return convertToDBType((StringType) o, type);
+		}
+		return null;
+	}
+	
+	public static DBType convertToDBType(StringType dt, int type) {
+		return convertToDBType(dt.get(), type);
+	}
+	
+	public static DBType convertToDBType(Integer s, int type) {
+		switch (type) {
+		case SerializerManager.STRING:
+			return new StringType(s != null? s.toString() : null);
+		case SerializerManager.INT:
+			return new IntType(s);
+		case SerializerManager.LONG:
+			return new LongType(s != null ? s.longValue() : null);
+		case SerializerManager.DOUBLE:
+			return new DoubleType(s != null ? s.doubleValue() : null);
+		case SerializerManager.FLOAT:
+			return new FloatType(s != null ? s.floatValue() : null);
+		default:
+			return null;
+		}
+	}
+
+	public static DBType convertToDBType(Long s, int type) {
+		switch (type) {
+		case SerializerManager.STRING:
+			return new StringType(s != null? s.toString() : null);
+		case SerializerManager.INT:
+			return new IntType(s != null ? s.intValue() : null);
+		case SerializerManager.LONG:
+			return new LongType(s != null ? s.longValue() : null);
+		case SerializerManager.DOUBLE:
+			return new DoubleType(s != null ? s.doubleValue() : null);
+		case SerializerManager.FLOAT:
+			return new FloatType(s != null ? s.floatValue() : null);
+		default:
+			return null;
+		}
+	}
+
+	public static DBType convertToDBType(Double s, int type) {
+		switch (type) {
+		case SerializerManager.STRING:
+			return new StringType(s != null? s.toString() : null);
+		case SerializerManager.INT:
+			return new IntType(s != null ? s.intValue() : null);
+		case SerializerManager.LONG:
+			return new LongType(s != null ? s.longValue() : null);
+		case SerializerManager.DOUBLE:
+			return new DoubleType(s != null ? s.doubleValue() : null);
+		case SerializerManager.FLOAT:
+			return new FloatType(s != null ? s.floatValue() : null);
+		default:
+			return null;
+		}
+	}
+	
+	public static DBType convertToDBType(Float s, int type) {
+		switch (type) {
+		case SerializerManager.STRING:
+			return new StringType(s != null? s.toString() : null);
+		case SerializerManager.INT:
+			return new IntType(s != null ? s.intValue() : null);
+		case SerializerManager.LONG:
+			return new LongType(s != null ? s.longValue() : null);
+		case SerializerManager.DOUBLE:
+			return new DoubleType(s != null ? s.doubleValue() : null);
+		case SerializerManager.FLOAT:
+			return new FloatType(s != null ? s.floatValue() : null);
+		default:
+			return null;
+		}
+	}
+
 	public String getCollectionName() {
 		return collectionName;
 	}
@@ -92,25 +264,25 @@ public class DBInsertQuery extends BaseDBQuery {
 		return sgqe.insertQuery();
 	}
 	
-	private StringType getValue(String s) {
-		if (s == null) {
-			return new StringType(null);
-		}
-		s = s.trim();
-		if ("?".equals(s)) {
-			DBType value = bindParamList.get(currentBindPosn++);
-			if (value == null) {
-				return null;
-			}
-			return new StringType(value.toString());
-		}
-		if (s.startsWith("'")) {
-			s = s.replaceFirst("'", "");
-		}
-		if (s.substring(s.length()-1).equals("'")) {
-			s = s.substring(0, s.length()-1);
-		}
-		s = s.replaceAll("\'", "'");
-		return new StringType(s);
-	}	
+//	private StringType getValue(String s) {
+//		if (s == null) {
+//			return new StringType(null);
+//		}
+//		s = s.trim();
+//		if ("?".equals(s)) {
+//			DBType value = bindParamList.get(currentBindPosn++);
+//			if (value == null) {
+//				return null;
+//			}
+//			return new StringType(value.toString());
+//		}
+//		if (s.startsWith("'")) {
+//			s = s.replaceFirst("'", "");
+//		}
+//		if (s.substring(s.length()-1).equals("'")) {
+//			s = s.substring(0, s.length()-1);
+//		}
+//		s = s.replaceAll("\'", "'");
+//		return new StringType(s);
+//	}	
 }

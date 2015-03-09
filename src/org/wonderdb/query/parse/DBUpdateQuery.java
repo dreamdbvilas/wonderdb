@@ -1,3 +1,5 @@
+package org.wonderdb.query.parse;
+
 /*******************************************************************************
  *    Copyright 2013 Vilas Athavale
  *
@@ -13,7 +15,6 @@
  *    See the License for the specific language governing permissions and
  *    limitations under the License.
  *******************************************************************************/
-package org.wonderdb.query.parse;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -22,73 +23,86 @@ import java.util.List;
 import java.util.Map;
 
 import org.jboss.netty.buffer.ChannelBuffer;
-import org.wonderdb.block.record.manager.RecordId;
 import org.wonderdb.block.record.manager.TableRecordManager;
 import org.wonderdb.cluster.Shard;
 import org.wonderdb.expression.AndExpression;
-import org.wonderdb.expression.BasicExpression;
-import org.wonderdb.parser.UQLParser.SelectStmt;
-import org.wonderdb.parser.UQLParser.TableDef;
-import org.wonderdb.parser.UQLParser.UpdateSetExpression;
-import org.wonderdb.parser.UQLParser.UpdateStmt;
-import org.wonderdb.query.plan.CollectionAlias;
-import org.wonderdb.schema.CollectionColumn;
+import org.wonderdb.expression.VariableOperand;
+import org.wonderdb.parser.TableDef;
+import org.wonderdb.parser.UpdateSetExpression;
+import org.wonderdb.parser.jtree.SimpleNode;
+import org.wonderdb.parser.jtree.SimpleNodeHelper;
+import org.wonderdb.parser.jtree.UQLParserTreeConstants;
+import org.wonderdb.query.parser.jtree.DBSelectQueryJTree;
 import org.wonderdb.schema.CollectionMetadata;
 import org.wonderdb.schema.SchemaMetadata;
 import org.wonderdb.txnlogger.LogManager;
 import org.wonderdb.txnlogger.TransactionId;
-import org.wonderdb.types.DBType;
-import org.wonderdb.types.impl.StringType;
+import org.wonderdb.types.RecordId;
+
 
 
 public class DBUpdateQuery extends BaseDBQuery {
-	UpdateStmt stmt = null;
-	List<DBType> bindParamList = null;
 	AndExpression andExp = null;
-	DBSelectQuery selQuery = null;
+	SimpleNode filterNode = null;
+	List<CollectionAlias> caList = null;
+	Map<String, CollectionAlias> fromMap = null;
+	List<UpdateSetExpression> updateSetExpList = null;
+	DBSelectQueryJTree selQuery = null;
 	
-	public DBUpdateQuery(String query, UpdateStmt stmt, List<DBType> bindParamList, int type, ChannelBuffer buffer) {
-		super(query, type, buffer);
-		this.stmt = stmt;
-		this.bindParamList = bindParamList;
+	public DBUpdateQuery(String q, SimpleNode query, int type, ChannelBuffer buffer) {
+		super(q, query, type, buffer);
 
-	
-		SelectStmt sStmt = new SelectStmt();
-		TableDef tDef = new TableDef();
-		tDef.alias = "";
-		tDef.table = stmt.table;
+		SimpleNode tableNode = SimpleNodeHelper.getInstance().getFirstNode(query, UQLParserTreeConstants.JJTTABLEDEF);
 		List<TableDef> tDefList = new ArrayList<TableDef>();
+		TableDef tDef = SimpleNodeHelper.getInstance().getTableDef(tableNode);
 		tDefList.add(tDef);
-		sStmt.tableDefList = tDefList;
-		sStmt.filter = stmt.filter;
-		Map<String, DBType> changedColumns = new HashMap<String, DBType>();
-		List<UpdateSetExpression> updateList = stmt.updateSetExpList;
-		List<DBType> selectBindParam = new ArrayList<DBType>(bindParamList);
-		for (int i = 0; i < updateList.size(); i++) {
-			if ("?".equals(updateList.get(i).value)) {
-				selectBindParam.remove(0);
+		caList = getCaList(tDefList);
+		fromMap = getFromMap(caList);
+		
+		filterNode = SimpleNodeHelper.getInstance().getFirstNode(query, UQLParserTreeConstants.JJTFILTEREXPRESSION);
+		
+		List<SimpleNode> updateSetNodes = new ArrayList<>();
+		SimpleNodeHelper.getInstance().getNodes(query, UQLParserTreeConstants.JJTUPDATECOLUMN, updateSetNodes);
+		updateSetExpList = SimpleNodeHelper.getInstance().getUpdateSet(updateSetNodes, caList);
+		
+		List<SimpleNode> selectColumnNodeList = new ArrayList<>(); 
+		Map<CollectionAlias, List<Integer>> selectColumnList = new HashMap<>();
+		
+		SimpleNodeHelper.getInstance().getNodes(query, UQLParserTreeConstants.JJTCOLUMNANDALIAS, selectColumnNodeList);
+		for (int i = 0; i < selectColumnNodeList.size(); i++) {
+			SimpleNode node = selectColumnNodeList.get(i);
+			VariableOperand vo = SimpleNodeHelper.getInstance().getColumnId(node, caList);
+			
+			List<Integer> colList = selectColumnList.get(vo.getCollectionAlias());
+			if (colList == null) {
+				colList = new ArrayList<>();
+				selectColumnList.put(vo.getCollectionAlias(), colList);
 			}
+			colList.add(vo.getColumnId());
 		}
-		sStmt.selectColList = new ArrayList<String>();
-		CollectionMetadata colMeta = SchemaMetadata.getInstance().getCollectionMetadata(stmt.table);
-//		boolean setColumnValue = false;
-		sStmt.selectColList.add("objectId");
-		for (int i = 0; i < updateList.size(); i++) {
-			UpdateSetExpression exp = updateList.get(i);
-			String colName = exp.column;
-			sStmt.selectColList.add(colName);
-			int colId = colMeta.getColumnId(exp.value);
-			if (colId >= 0) {
-				sStmt.selectColList.add(exp.value);
-				CollectionColumn cc = colMeta.getCollectionColumn(colId);
-				changedColumns.put(colName, cc);
-//				setColumnValue = true;
-			} else {
-				changedColumns.put(colName, getValue(exp.value));				
-			}
+
+		selQuery = new DBSelectQueryJTree(getQueryString(), query, fromMap, selectColumnList, filterNode, type, buffer);
+		andExp = selQuery.getAndExpression();
+	}
+	
+	private List<CollectionAlias> getCaList(List<TableDef> list) {
+		List<CollectionAlias> retList = new ArrayList<>();
+		for (int i = 0; i < list.size(); i++) {
+			TableDef tDef = list.get(i);
+			CollectionAlias ca = new CollectionAlias(tDef.table, tDef.alias);
+			retList.add(ca);
 		}
-		selQuery = new DBSelectQuery(query, sStmt, selectBindParam, type, buffer);
-		andExp = new AndExpression(selQuery.expList);
+		
+		return retList;
+	}
+	
+	private Map<String, CollectionAlias> getFromMap(List<CollectionAlias> caList) {
+		Map<String, CollectionAlias> fromMap = new HashMap<>();
+		for (int i = 0; i < caList.size(); i++) {
+			CollectionAlias ca = caList.get(i);
+			fromMap.put(ca.getAlias(), ca);
+		}
+		return fromMap;
 	}
 	
 	public AndExpression getExpression() {
@@ -96,80 +110,13 @@ public class DBUpdateQuery extends BaseDBQuery {
 	}
 	
 	public String getCollectionName() {
-		return stmt.table;
+		return caList.get(0).getCollectionName();
 	}
 	
 	public int execute(Shard shard) {
-//		int[] shards = DefaultClusterManager.getInstance().getShards(andExp);
-//		if (type == DreamDBShardServerHandler.SERVER_HANDLER) {
-//			for (int i = 0; i < shards.length; i++) {
-//				int shardId = shards[i];
-//				if (shardId == DefaultClusterManager.getInstance().getMachineId()) {
-//					// we should process
-//				} else {
-//					Channel channel = DefaultClusterManager.getInstance().getMaster(shardId);
-//					// process with connection
-//				}
-//			}
-//		} else {
-//			// we just process but dont do scatter gather.
-//		}
-
-//		selQuery.selectColumnNames = new HashMap<CollectionAlias, List<ColumnType>>();
-//		selQuery.selectColumnNames.put(ca, new ArrayList<ColumnType>(changedColumns.keySet()));
-
-		
-		SelectStmt sStmt = new SelectStmt();
-		TableDef tDef = new TableDef();
-		tDef.alias = "";
-		tDef.table = stmt.table;
-		List<TableDef> tDefList = new ArrayList<TableDef>();
-		tDefList.add(tDef);
-		sStmt.tableDefList = tDefList;
-		sStmt.filter = stmt.filter;
-		Map<String, DBType> changedColumns = new HashMap<String, DBType>();
-		List<UpdateSetExpression> updateList = stmt.updateSetExpList;
-		List<DBType> selectBindParam = new ArrayList<DBType>(bindParamList);
-		for (int i = 0; i < updateList.size(); i++) {
-			if ("?".equals(updateList.get(i).value)) {
-				selectBindParam.remove(0);
-			}
-		}
-		sStmt.selectColList = new ArrayList<String>();
-		CollectionMetadata colMeta = SchemaMetadata.getInstance().getCollectionMetadata(stmt.table);
-		boolean setColumnValue = false;
-//		sStmt.selectColList.add("objectId");
-		for (int i = 0; i < updateList.size(); i++) {
-			UpdateSetExpression exp = updateList.get(i);
-			String colName = exp.column;
-			sStmt.selectColList.add(colName);
-			int colId = colMeta.getColumnId(exp.value);
-			if (colId >= 0) {
-				sStmt.selectColList.add(exp.value);
-				CollectionColumn cc = colMeta.getCollectionColumn(colId);
-				changedColumns.put(colName, cc);
-				setColumnValue = true;
-			} else {
-				changedColumns.put(colName, getValue(exp.value));				
-			}
-		}
-		
-		selQuery = new DBSelectQuery(query, sStmt, selectBindParam, type, buffer);
-		andExp = new AndExpression(selQuery.expList);
-
 		List<Map<CollectionAlias, RecordId>> recListList = selQuery.executeGetDC(shard);
-		List<BasicExpression> expList = selQuery.getExpList();
 
 		int updateCount = 0;
-
-		int m = 0;
-		for (int x = 0; x < updateList.size(); x++) {
-			if ("?".equals(updateList.get(x).value)) {
-				changedColumns.put(updateList.get(x).column, bindParamList.get(m++));
-			}
-		}
-		
-		Map<String, DBType> tmpChangedColumns = new HashMap<String, DBType>(changedColumns);
 		
 		for (int i = 0; i < recListList.size(); i++) {
 			Map<CollectionAlias, RecordId> recList = recListList.get(i);
@@ -179,14 +126,13 @@ public class DBUpdateQuery extends BaseDBQuery {
 					CollectionAlias ca = iter.next();
 					RecordId recId = recList.get(ca);
 					TransactionId txnId = null;
+					CollectionMetadata colMeta = SchemaMetadata.getInstance().getCollectionMetadata(ca.getCollectionName());
 					try {
-						if (setColumnValue) {
-							tmpChangedColumns = new HashMap<String, DBType>(changedColumns);
-						}
 						if (colMeta.isLoggingEnabled()) {
 							txnId = LogManager.getInstance().startTxn();
 						}
-						updateCount = updateCount + TableRecordManager.getInstance().updateTableRecord(stmt.table, tmpChangedColumns, shard, recId, expList, txnId);
+						updateCount = updateCount + TableRecordManager.getInstance().updateTableRecord(getCollectionName(), 
+								recId, shard, updateSetExpList, queryNode, fromMap, txnId);
 					} catch (Exception e) {
 						throw new RuntimeException(e);
 					} finally {
@@ -196,21 +142,5 @@ public class DBUpdateQuery extends BaseDBQuery {
 			}
 		}
 		return updateCount;
-	}
-	
-	private StringType getValue(String val) {
-		if (val == null) {
-			return new StringType(null);
-		}
-		
-		if (val.startsWith("'")) {
-			val = val.substring(1);
-		}
-		
-		if (val.endsWith("'")) {
-			val = val.substring(0, val.length()-1);
-		}
-		
-		return new StringType(val);
-	}
+	}	
 }

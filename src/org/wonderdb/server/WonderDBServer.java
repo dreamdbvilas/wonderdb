@@ -1,3 +1,4 @@
+package org.wonderdb.server;
 /*******************************************************************************
  *    Copyright 2013 Vilas Athavale
  *
@@ -13,20 +14,16 @@
  *    See the License for the specific language governing permissions and
  *    limitations under the License.
  *******************************************************************************/
-package org.wonderdb.server;
 
 import java.io.File;
-import java.lang.management.ManagementFactory;
 import java.net.InetSocketAddress;
 import java.sql.DriverManager;
+import java.util.List;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
-
-import javax.management.MBeanServer;
-import javax.management.ObjectName;
 
 import org.apache.log4j.BasicConfigurator;
 import org.apache.log4j.PropertyConfigurator;
@@ -43,33 +40,15 @@ import org.jboss.netty.channel.group.ChannelGroupFuture;
 import org.jboss.netty.channel.group.DefaultChannelGroup;
 import org.jboss.netty.channel.socket.nio.NioServerSocketChannelFactory;
 import org.jboss.netty.handler.codec.frame.FrameDecoder;
-import org.wonderdb.block.Block;
-import org.wonderdb.block.CacheableList;
-import org.wonderdb.cache.BaseCacheHandler;
-import org.wonderdb.cache.CacheBean;
-import org.wonderdb.cache.CacheHandler;
-import org.wonderdb.cache.CacheLock;
-import org.wonderdb.cache.CacheMap;
-import org.wonderdb.cache.CacheState;
-import org.wonderdb.cache.CacheUsage;
-import org.wonderdb.cache.CacheWriter;
-import org.wonderdb.cache.InflightFileReader;
-import org.wonderdb.cache.Pinner;
-import org.wonderdb.cache.PrimaryCacheHandlerFactory;
-import org.wonderdb.cache.PrimaryCacheResourceProvider;
-import org.wonderdb.cache.PrimaryCacheResourceProviderFactory;
-import org.wonderdb.cache.SecondaryCacheHandlerFactory;
-import org.wonderdb.cache.SecondaryCacheResourceProvider;
-import org.wonderdb.cache.SecondaryCacheResourceProviderFactory;
-import org.wonderdb.cluster.ClusterManagerFactory;
-import org.wonderdb.cluster.kafka.KafkaConsumerManager;
-import org.wonderdb.cluster.kafka.KafkaProducerManager;
-import org.wonderdb.query.executor.ScatterGatherQueryExecutor;
-import org.wonderdb.query.sql.WonderDBConnectionPool;
+import org.wonderdb.cache.impl.CacheBean;
+import org.wonderdb.cache.impl.CacheHandler;
+import org.wonderdb.cache.impl.CacheLock;
+import org.wonderdb.cache.impl.CacheState;
+import org.wonderdb.cache.impl.CacheWriter;
+import org.wonderdb.cache.impl.MemoryCacheMap;
 import org.wonderdb.query.sql.WonderDBDriver;
-import org.wonderdb.schema.CollectionTailMgr;
-import org.wonderdb.schema.SchemaMetadata;
-import org.wonderdb.seralizers.block.SerializedBlock;
+import org.wonderdb.types.BlockPtr;
+import org.wonderdb.types.record.Record;
 
 
 public class WonderDBServer {
@@ -81,16 +60,16 @@ public class WonderDBServer {
 	
 	static CacheBean primaryCacheBean = new CacheBean();
 	static CacheState primaryCacheState = new CacheState();
-	static CacheMap<CacheableList> primaryCacheMap = new CacheMap<CacheableList>(1000, 5, false);
+	static MemoryCacheMap<BlockPtr, List<Record>> primaryCacheMap = new MemoryCacheMap<>(1000, 5, false);
 	static CacheLock cacheLock = new CacheLock();
 	static CacheBean secondaryCacheBean = new CacheBean();
 	static CacheState secondaryCacheState = new CacheState();
-	static CacheMap<ChannelBuffer> secondaryCacheMap = new CacheMap<ChannelBuffer>(1500, 5, true);
+	static MemoryCacheMap<BlockPtr, ChannelBuffer> secondaryCacheMap = new MemoryCacheMap<>(1500, 5, true);
 //	static SecondaryCacheResourceProvider resourceProvider = null;
 	static int colId = -1;
-	static CacheHandler<CacheableList> primaryCacheHandler = null;
-	static CacheHandler<ChannelBuffer> secondaryCacheHandler = null;
-	public static CacheWriter writer = null;
+	static CacheHandler<BlockPtr, List<Record>> primaryCacheHandler = null;
+	static CacheHandler<BlockPtr, ChannelBuffer> secondaryCacheHandler = null;
+	public static CacheWriter<BlockPtr, ChannelBuffer> writer = null;
 	
 	static {
 		File file = new File("./log4j.properties");
@@ -115,40 +94,10 @@ public class WonderDBServer {
     		return;
     	}
     	
-    	WonderDBPropertyManager.getInstance().init(args[0]);
+
+
+    	WonderDBCacheService.getInstance().init(args[0]);
     	
-		primaryCacheBean.setCleanupHighWaterMark(WonderDBPropertyManager.getInstance().getPrimaryCacheHighWatermark()); // 1000
-		primaryCacheBean.setCleanupLowWaterMark(WonderDBPropertyManager.getInstance().getPrimaryCacheLowWatermark()); // 999
-		primaryCacheBean.setMaxSize(WonderDBPropertyManager.getInstance().getPrimaryCacheMaxSize()); // 1000
-		PrimaryCacheResourceProvider primaryProvider = new PrimaryCacheResourceProvider(primaryCacheBean, primaryCacheState, cacheLock);
-		PrimaryCacheResourceProviderFactory.getInstance().setResourceProvider(primaryProvider);
-		primaryCacheHandler = new BaseCacheHandler<Block, CacheableList>(primaryCacheMap, primaryCacheBean, primaryCacheState, 
-				cacheLock, primaryProvider, null, null);
-		PrimaryCacheHandlerFactory.getInstance().setCacheHandler(primaryCacheHandler);
-		
-		secondaryCacheBean.setCleanupHighWaterMark(WonderDBPropertyManager.getInstance().getSecondaryCacheHighWatermark()); // 1475
-		secondaryCacheBean.setCleanupLowWaterMark(WonderDBPropertyManager.getInstance().getSecondaryCacheLowWatermark()); // 1450
-		secondaryCacheBean.setMaxSize(WonderDBPropertyManager.getInstance().getSecondaryCacheMaxSize()); // 1500
-//		secondaryCacheBean.setStartSyncSize(10);
-		CacheLock secondaryCacheLock = new CacheLock();
-		SecondaryCacheResourceProvider secondaryProvider = new SecondaryCacheResourceProvider(secondaryCacheBean, secondaryCacheState, 
-				secondaryCacheLock, WonderDBPropertyManager.getInstance().getSecondaryCacheMaxSize());
-		SecondaryCacheResourceProviderFactory.getInstance().setResourceProvider(secondaryProvider);
-		secondaryCacheHandler = new BaseCacheHandler<SerializedBlock, ChannelBuffer>(secondaryCacheMap, 
-				secondaryCacheBean, secondaryCacheState, secondaryCacheLock, secondaryProvider, InflightFileReader.getInstance(), null);
-		SecondaryCacheHandlerFactory.getInstance().setCacheHandler(secondaryCacheHandler);
-		writer = new CacheWriter(secondaryCacheMap, WonderDBPropertyManager.getInstance().getCacheWriterSyncTime()); // 30000
-
-		SchemaMetadata.getInstance().initialize();
-
-		MBeanServer beanServer = ManagementFactory.getPlatformMBeanServer();
-		ObjectName name = new ObjectName("PrimaryCacheState:type=CacheUsage");
-		beanServer.registerMBean(new CacheUsage(primaryCacheState), name);
-		name = new ObjectName("ScondaryCacheState:type=CacheUsage");
-		beanServer.registerMBean(new CacheUsage(secondaryCacheState), name);
-		name = new ObjectName("CacahePinner:type=Pinner");
-		beanServer.registerMBean(new Pinner(), name);
-
 		ExecutorService serverBoss = new ThreadPoolExecutor(WonderDBPropertyManager.getInstance().getNettyBossThreadPoolCoreSize(), 
 				WonderDBPropertyManager.getInstance().getNettyBossThreadPoolMaxSize(), 5, TimeUnit.MINUTES, 
 				new ArrayBlockingQueue<Runnable>(WonderDBPropertyManager.getInstance().getNettyBossThreadPoolQueueSize())); // 10, 50, 5, 20
@@ -249,17 +198,8 @@ public class WonderDBServer {
         future.awaitUninterruptibly();
         shardFactory.releaseExternalResources();
         serverFactory.releaseExternalResources();
-        writer.shutdown();
-//        ArchiveLogRemoteWriter.getInstance().shutdown();
-//        replicaSetFactory.releaseExternalResources();
-        primaryCacheHandler.shutdown();
-        secondaryCacheHandler.shutdown();
-        CollectionTailMgr.getInstance().shutdown();
-        KafkaConsumerManager.getInstance().shutdown();
-        ScatterGatherQueryExecutor.shutdown();
-        ClusterManagerFactory.getInstance().getClusterManager().shutdown();
-        KafkaProducerManager.getInstance().shutdown();
-        WonderDBConnectionPool.getInstance().shutdown();
+
+        WonderDBCacheService.getInstance().shutdown();
     }
     
     public static class BufferDecoder extends FrameDecoder {

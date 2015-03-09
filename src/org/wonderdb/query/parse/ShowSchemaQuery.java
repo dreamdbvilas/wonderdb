@@ -1,3 +1,5 @@
+package org.wonderdb.query.parse;
+
 /*******************************************************************************
  *    Copyright 2013 Vilas Athavale
  *
@@ -13,39 +15,33 @@
  *    See the License for the specific language governing permissions and
  *    limitations under the License.
  *******************************************************************************/
-package org.wonderdb.query.parse;
 
-import java.util.Map;
+import java.util.List;
 
 import org.wonderdb.expression.AndExpression;
-import org.wonderdb.parser.UQLParser.ShowTableStmt;
 import org.wonderdb.schema.CollectionMetadata;
 import org.wonderdb.schema.SchemaMetadata;
 
 
 public class ShowSchemaQuery extends BaseDBQuery {
 	
-	public ShowSchemaQuery(){
-		super(null, -1, null);
+	public ShowSchemaQuery(String q){
+		super(q, null, -1, null);
 	}
 	
 	
 	public String execute() {
-		Map<String, CollectionMetadata> map = SchemaMetadata.getInstance().getCollections();
-		if (map == null) {
+		List<CollectionMetadata> colList = SchemaMetadata.getInstance().getCollections();
+		if (colList == null) {
 			return "\n";
 		}
 		StringBuilder builder = new StringBuilder();
-		for (CollectionMetadata meta : map.values()) {
-			ShowTableStmt stmt = new ShowTableStmt();
-			stmt.tableName = meta.getName();
-			if (!stmt.tableName.equals("metaCollection") && !stmt.tableName.equals("indexMetaCollection") && !stmt.tableName.equals("fileStorageMetaCollection")) {
-				builder.append("-------------------------------------------------------------------------\n");
-				ShowTableQuery q = new ShowTableQuery(null, stmt);
-				builder.append("Collection Name: ").append(meta.getName()).append("\n");
-				builder.append(q.execute());
-				builder.append("\n");
-			}
+		for (CollectionMetadata meta : colList) {
+			builder.append("-------------------------------------------------------------------------\n");
+			ShowTableQuery q = new ShowTableQuery(getQueryString(), meta.getCollectionName());
+			builder.append("Collection Name: ").append(meta.getCollectionName()).append("\n");
+			builder.append(q.execute());
+			builder.append("\n");
 		}
 		return builder.toString();
 	}

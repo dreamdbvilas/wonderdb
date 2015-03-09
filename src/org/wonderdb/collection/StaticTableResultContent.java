@@ -1,3 +1,5 @@
+package org.wonderdb.collection;
+
 /*******************************************************************************
  *    Copyright 2013 Vilas Athavale
  *
@@ -13,39 +15,47 @@
  *    See the License for the specific language governing permissions and
  *    limitations under the License.
  *******************************************************************************/
-package org.wonderdb.collection;
 
+import java.util.HashMap;
+import java.util.Iterator;
 import java.util.Map;
 
-import org.wonderdb.block.record.manager.RecordId;
-import org.wonderdb.block.record.table.TableRecord;
-import org.wonderdb.schema.CollectionMetadata;
-import org.wonderdb.schema.SchemaMetadata;
 import org.wonderdb.types.DBType;
-import org.wonderdb.types.impl.ColumnType;
+import org.wonderdb.types.ExtendedColumn;
+import org.wonderdb.types.RecordId;
+import org.wonderdb.types.record.TableRecord;
+
 
 
 public class StaticTableResultContent implements ResultContent {
 	TableRecord tr = null;
-	int schemaId = -1;
 	
-	public StaticTableResultContent(TableRecord tr, RecordId recId, int schemaId) {
+	public StaticTableResultContent(TableRecord tr) {
 		this.tr = tr;
-		this.schemaId = schemaId;
-		if (this.tr != null) {
-			this.tr.setRecordId(recId);
-		}
 	}
 	
 	@Override
-	public DBType getValue(ColumnType ct, String path) {
-		CollectionMetadata colMeta = SchemaMetadata.getInstance().getCollectionMetadata(schemaId);
-		return tr.getColumnValue(colMeta, ct, path);
+	public DBType getValue(Integer ct) {
+		DBType column = tr.getColumnMap().get(ct);
+		if (column != null) {
+			if (column instanceof ExtendedColumn) {
+				return ((ExtendedColumn) column).getValue();
+			}
+			return column;
+		}
+		return null;
 	}
 
 	@Override
-	public Map<ColumnType, DBType> getAllColumns() {
-		return tr.getColumns();
+	public Map<Integer, DBType> getAllColumns() {
+		Map<Integer, DBType> retMap = new HashMap<Integer, DBType>();
+		Iterator<Integer> iter = tr.getColumnMap().keySet().iterator();
+		while (iter.hasNext()) {
+			int key = iter.next();
+			DBType val = tr.getColumnMap().get(key);
+			retMap.put(key, val);
+		}
+		return retMap;
 	}
 
 	@Override
@@ -53,18 +63,7 @@ public class StaticTableResultContent implements ResultContent {
 		return tr.getRecordId();
 	}
 
-	@Override
-	public int getSchemaId() {
-		return schemaId;
-	}
-	
 	public TableRecord getTableRecord() {
 		return tr;
 	}
-
-	@Override
-	public int getCollectionSchemaId() {
-		return schemaId;
-	}
-
 }

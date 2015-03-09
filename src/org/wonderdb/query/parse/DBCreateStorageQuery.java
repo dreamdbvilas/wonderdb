@@ -1,3 +1,15 @@
+package org.wonderdb.query.parse;
+
+import org.wonderdb.cluster.ClusterManagerFactory;
+import org.wonderdb.expression.AndExpression;
+import org.wonderdb.metadata.StorageMetadata;
+import org.wonderdb.parser.jtree.Node;
+import org.wonderdb.parser.jtree.SimpleNode;
+import org.wonderdb.parser.jtree.SimpleNodeHelper;
+import org.wonderdb.parser.jtree.UQLParserTreeConstants;
+import org.wonderdb.server.WonderDBPropertyManager;
+import org.wonderdb.types.FileBlockEntry;
+
 /*******************************************************************************
  *    Copyright 2013 Vilas Athavale
  *
@@ -13,30 +25,46 @@
  *    See the License for the specific language governing permissions and
  *    limitations under the License.
  *******************************************************************************/
-package org.wonderdb.query.parse;
 
-import org.wonderdb.cluster.ClusterManagerFactory;
-import org.wonderdb.expression.AndExpression;
-import org.wonderdb.parser.UQLParser.CreateStorageStmt;
-import org.wonderdb.schema.SchemaMetadata;
 
 
 public class DBCreateStorageQuery extends BaseDBQuery {
-	CreateStorageStmt stmt = null;
-	public DBCreateStorageQuery(String query, CreateStorageStmt stmt) {
-		super(query, -1, null);
-		this.stmt = stmt;
+	String storageName = null;
+	int blockSize = -1;
+	boolean isDefault = false;
+	
+	public DBCreateStorageQuery(String q, Node n) {
+		super(q, (SimpleNode) n, -1, null);
+		SimpleNode query = (SimpleNode) n;
+		SimpleNode node = SimpleNodeHelper.getInstance().getFirstNode(query, UQLParserTreeConstants.JJTSTORAGENAME);
+		if (node == null) {
+			throw new RuntimeException("Invalid syntax");
+		}
+		storageName = node.jjtGetFirstToken().image;
+		storageName = storageName.substring(1, storageName.length()-1);
+		node = SimpleNodeHelper.getInstance().getFirstNode(query, UQLParserTreeConstants.JJTSTORAGESIZE);
+		if (node != null) {
+			blockSize = Integer.parseInt(node.jjtGetFirstToken().image);
+		} else {
+			blockSize = WonderDBPropertyManager.getInstance().getDefaultBlockSize();
+		}
+		node = SimpleNodeHelper.getInstance().getFirstNode(query, UQLParserTreeConstants.JJTDEFAULTSTORAGE);
+		if (node != null) {
+			isDefault = true;
+		}
 	}
 	
 	public void execute() {
-		int bSize = Integer.parseInt(stmt.blockSize);
-		stmt.fileName = stmt.fileName.substring(1, stmt.fileName.length()-1);
-		SchemaMetadata.getInstance().addStorage(stmt.fileName, bSize, stmt.isDefault);
-		ClusterManagerFactory.getInstance().getClusterManager().createStorage(stmt.fileName, bSize, stmt.isDefault);
+		FileBlockEntry entry = new FileBlockEntry();
+		entry.setBlockSize(blockSize);
+		entry.setDefaultFile(isDefault);
+		entry.setFileName(storageName);
+		StorageMetadata.getInstance().add(entry);
+		ClusterManagerFactory.getInstance().getClusterManager().createStorage(storageName, blockSize, isDefault);
 	}
 	
 	public String getFileName() {
-		return stmt.fileName;
+		return storageName;
 	}
 
 	@Override

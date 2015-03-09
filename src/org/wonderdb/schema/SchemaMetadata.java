@@ -1,3 +1,5 @@
+package org.wonderdb.schema;
+
 /*******************************************************************************
  *    Copyright 2013 Vilas Athavale
  *
@@ -13,7 +15,6 @@
  *    See the License for the specific language governing permissions and
  *    limitations under the License.
  *******************************************************************************/
-package org.wonderdb.schema;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -23,662 +24,358 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 
-import org.wonderdb.block.BlockPtr;
-import org.wonderdb.block.impl.base.SingleBlockPtr;
-import org.wonderdb.block.impl.base.SingleBlockPtrList;
-import org.wonderdb.block.index.IndexBlock;
-import org.wonderdb.block.index.factory.BlockFactory;
-import org.wonderdb.block.record.manager.RecordId;
-import org.wonderdb.block.record.table.TableRecord;
-import org.wonderdb.cache.CacheEntryPinner;
-import org.wonderdb.cluster.ClusterManagerFactory;
+import org.wonderdb.cache.impl.CacheEntryPinner;
 import org.wonderdb.cluster.Shard;
-import org.wonderdb.collection.BTree;
-import org.wonderdb.collection.exceptions.InvalidCollectionNameException;
-import org.wonderdb.collection.exceptions.InvalidIndexException;
-import org.wonderdb.collection.impl.BTreeImpl;
-import org.wonderdb.file.FileAlreadyExisits;
-import org.wonderdb.file.FileBlockManager;
-import org.wonderdb.file.FilePointerFactory;
-import org.wonderdb.query.parse.DBSelectQuery;
-import org.wonderdb.query.parse.QueryParser;
-import org.wonderdb.query.plan.CollectionAlias;
+import org.wonderdb.core.collection.BTree;
+import org.wonderdb.core.collection.ResultIterator;
+import org.wonderdb.core.collection.WonderDBList;
+import org.wonderdb.core.collection.impl.BTreeImpl;
+import org.wonderdb.exception.InvalidCollectionNameException;
+import org.wonderdb.metadata.StorageMetadata;
+import org.wonderdb.serialize.SerializerManager;
 import org.wonderdb.server.WonderDBPropertyManager;
-import org.wonderdb.server.WonderDBServer;
+import org.wonderdb.storage.FileBlockManager;
 import org.wonderdb.txnlogger.LogManager;
 import org.wonderdb.txnlogger.TransactionId;
+import org.wonderdb.types.BlockPtr;
+import org.wonderdb.types.CollectionNameMeta;
+import org.wonderdb.types.ColumnNameMeta;
+import org.wonderdb.types.ColumnSerializerMetadata;
 import org.wonderdb.types.DBType;
-import org.wonderdb.types.impl.ColumnType;
-import org.wonderdb.types.impl.IndexKeyType;
-import org.wonderdb.types.metadata.impl.SerializedCollectionMetadata;
-import org.wonderdb.types.metadata.impl.SerializedCollectionMetadata.FixedColumns;
-import org.wonderdb.types.metadata.impl.SerializedIndexMetadata;
-import org.wonderdb.types.metadata.impl.SerializedStorageCollectionMetadata;
+import org.wonderdb.types.IndexNameMeta;
+import org.wonderdb.types.IndexRecordMetadata;
+import org.wonderdb.types.SingleBlockPtr;
+import org.wonderdb.types.TableRecordMetadata;
+import org.wonderdb.types.TypeMetadata;
+import org.wonderdb.types.record.ListRecord;
+import org.wonderdb.types.record.ObjectListRecord;
 
 
 public class SchemaMetadata {
 	int nextId = 0;
-	private ConcurrentHashMap<String, List<IndexMetadata>> collectionIndexes = new ConcurrentHashMap<String, List<IndexMetadata>>();
-	private ConcurrentHashMap<String, IndexMetadata> indexByName = new ConcurrentHashMap<String, IndexMetadata>();
-	private ConcurrentHashMap<String, CollectionMetadata> collections = new ConcurrentHashMap<String, CollectionMetadata>();
-	private ConcurrentHashMap<Integer, String> idToNameMap = new ConcurrentHashMap<Integer, String>();
+	private ConcurrentHashMap<String, List<IndexNameMeta>> collectionIndexes = new ConcurrentHashMap<String, List<IndexNameMeta>>();
+	private ConcurrentHashMap<String, IndexNameMeta> indexByName = new ConcurrentHashMap<String, IndexNameMeta>();
+	private ConcurrentHashMap<String, CollectionMetadata> collections = new ConcurrentHashMap<>();
+	private ConcurrentMap<String, String> functions = new ConcurrentHashMap<String, String>();
+	
+	WonderDBList objectList = null; // name, head, 
+	WonderDBList objectColumnList = null; // id, name, tablename, type, isnull
+	WonderDBList indexList = null; // id name tableName, columnlist
+	
 	private static SchemaMetadata s_instance = new SchemaMetadata();
 	
 	private SchemaMetadata() {
 	}
 	
+	public String getColumnName(String collectionName, int columnId) {
+		return null;
+	}
+	
 	public static SchemaMetadata getInstance() {
 		return s_instance;
 	}
-	
-	
-	public void initialize() {
-		String systemFileName = WonderDBPropertyManager.getInstance().getSystemFile();
-		if (systemFileName == null || systemFileName.length() == 0) {
-			systemFileName = "system";
-		}
-		
-		createFileStorageMetaCollection(systemFileName);
-		createCollectionMetaCollection(systemFileName);
-		createIndexMetaCollection(systemFileName);
-		
-		long size = FilePointerFactory.getInstance().getSize(systemFileName);
-		if (size > 0) {	
-			loadSchemaMetadata();
+
+	public void init(boolean isNew) {
+		if (isNew) {
+			create();
 		} else {
-			bootstrap(systemFileName);
-		}
-		ClusterManagerFactory.getInstance().getClusterManager().init();
-	}
-	
-	private CollectionMetadata createCollection(String collectionName, List<CollectionColumn> columns) throws InvalidCollectionNameException {
-		CollectionMetadata colMetadata = addMetaCollection(collectionName);
-		colMetadata.addColumns(columns);
-		return colMetadata;
-	}
-	
-	private void createRecordList(Shard shard, CollectionMetadata meta, BlockPtr head) {
-		meta.createRecordList(shard, head);		
-	}
-	
-	private void createStorage(Shard shard, String fileName) {
-		FileBlockEntryType entry = FileBlockManager.getInstance().getMetaEntry(fileName);
-		addStorage(shard, entry.getBlockSize(), false);
-	}
-	
-	private void createFileStorageMetaCollection(String systemFileName) {
-		FileBlockEntryType entry = new FileBlockEntryType(systemFileName);
-		entry = FileBlockManager.getInstance().addFileBlockEntry(entry);
-
-		List<CollectionColumn> list = new ArrayList<CollectionColumn>();
-		list.add(new CollectionColumn("fixedColumns", 0, "bt", true, false));
-		list.add(new CollectionColumn("currentFilePosn", 1, "ls", true, false));
-		BlockPtr ptr = new SingleBlockPtr((byte) 0, 0);
-		try {
-			CollectionMetadata colMetadata = createCollection("fileStorageMetaCollection", list);
-			Shard shard = new Shard(0, "", "");
-			createRecordList(shard, colMetadata, ptr);
-		} catch (InvalidCollectionNameException e) {
+			load();
 		}
 	}
 	
-	private void createCollectionMetaCollection(String systemFileName) {		
-		List<CollectionColumn> list = new ArrayList<CollectionColumn>();
-		list.add(new CollectionColumn("fixedColumns", 0, "bt", true, false));
-		list.add(new CollectionColumn("headPtr", 1, "bs", true, false));
-		list.add(new CollectionColumn("tailPtr", 2, "bl", true, false));
-		BlockPtr ptr = new SingleBlockPtr((byte) 0, WonderDBServer.DEFAULT_BLOCK_SIZE);
-		try {
-
-			CollectionMetadata meta = createCollection("metaCollection", list);
-			Shard shard = new Shard(1, "", "");
-			createRecordList(shard, meta, ptr);
-		} catch (InvalidCollectionNameException e) {
-		}
+	public List<CollectionMetadata> getCollections() {
+		return new ArrayList<>(collections.values());
 	}
 	
-	private void createIndexMetaCollection(String systemFileName) {		
-		List<CollectionColumn> list = new ArrayList<CollectionColumn>();
-		list.add(new CollectionColumn("fixedColumns", 0, "bt", true, false));
-		list.add(new CollectionColumn("headPtr", 1, "bs", true, false));
-		list.add(new CollectionColumn("rootPtr", 2, "bs", true, false));
-		BlockPtr ptr = new SingleBlockPtr((byte) 0, 2*WonderDBServer.DEFAULT_BLOCK_SIZE);
+	public TypeMetadata getTypeMetadata(String collectionName) {
+		CollectionMetadata colMeta = collections.get(collectionName);
+		if (colMeta == null) {
+			IndexNameMeta inm = indexByName.get(collectionName);
+			if (inm != null) {
+				return getIndexMetadata(inm);
+			}
+		}
+		List<ColumnNameMeta> list = colMeta.getCollectionColumns();
+		if (list.size() == 1 && "_internal".equals(list.get(0).getColumnName())) {
+			return new ColumnSerializerMetadata(list.get(0).getColumnType());
+		}
 		
-		try {
-			
-			CollectionMetadata colMeta = createCollection("indexMetaCollection", list); 
-			Shard shard = new Shard(2, "", "");
-			createRecordList(shard, colMeta, ptr);
-		} catch (InvalidCollectionNameException e) {
+		TableRecordMetadata meta = new TableRecordMetadata();
+		Map<Integer, Integer> columnIdTypeMap = new HashMap<>();
+		for (int i = 0; i < list.size(); i++) {
+			ColumnNameMeta cnm = list.get(i);
+			columnIdTypeMap.put(cnm.getCoulmnId(), cnm.getColumnType());
 		}
+		meta.setColumnIdTypeMap(columnIdTypeMap);
+		return meta;
 	}
 	
-	private void bootstrap(String systemFile) {
-		BlockFactory.getInstance().bootstrapSchemaBlocks();
-		bootstrapFileStorageMetadata(systemFile);
-//		bootstrapCollectionMetadata();
-		bootstrapIndexMetadata();
-		ClusterManagerFactory.getInstance().getClusterManager();
+	public CollectionMetadata getCollectionMetadata(String collectionName) {
+		return collections.get(collectionName);
 	}
 	
-	private void bootstrapFileStorageMetadata(String systemFile) {
-		FileBlockEntryType entry = new FileBlockEntryType(systemFile);
-		entry.addBy(100*WonderDBServer.DEFAULT_BLOCK_SIZE);
-		entry.setRecordId(new RecordId(new SingleBlockPtr((byte) 0 , 0), 0));
-		addStorage(entry);
-//		ClusterManagerFactory.getInstance().getClusterManager().createStorage(systemFile, entry.getBlockSize(), true);
-
-		
-//		entry = FileBlockManager.getInstance().getEntry("data");
-//		entry.addBy(0);
-////		entry.setRecordId(new RecordId(new SingleBlockPtr((byte) 0 , 0), 0));
-//		addStorage(entry);
-		
+	public TypeMetadata getIndexMetadata(IndexNameMeta meta) {
+		IndexRecordMetadata irm = new IndexRecordMetadata();
+		if(meta.getCollectionName() == null || meta.getCollectionName().length() == 0) {
+			irm.setColumnIdList(meta.getColumnIdList());
+			irm.setTypeList(meta.getColumnIdList());
+		} else {
+			CollectionMetadata colMeta = SchemaMetadata.getInstance().getCollectionMetadata(meta.getCollectionName());
+			List<Integer> colTypeList = new ArrayList<>();
+			List<Integer> colIdList = new ArrayList<>();
+			for (int i = 0; i < meta.getColumnIdList().size(); i++) {
+				int colId = meta.getColumnIdList().get(i);
+				ColumnNameMeta cnm = colMeta.columnIdToNameMap.get(colId);
+				colTypeList.add(cnm.getColumnType());
+				colIdList.add(colId);
+			}
+			irm.setTypeList(colTypeList);
+			irm.setColumnIdList(colIdList);
+		}
+		return irm;
 	}
 	
-//	private void bootstrapCollectionMetadata() {
-//		CollectionMetadata colMeta = SchemaMetadata.getInstance().getCollectionMetadata("metaCollection");
-//		BlockPtr metaPtr = new SingleBlockPtr((byte) 0, DreamDBServer.DEFAULT_BLOCK_SIZE);
-//		SerializedCollectionMetadata scm = new SerializedCollectionMetadata();
-//		scm.updateHead(metaPtr);
-//		scm.updateTail(metaPtr);
-//		scm.setFixedColumns(colMeta.getName(), (byte) 0, colMeta.getFileName(), 1, false);
-//		TableRecord record = new TableRecord(scm.getColumns());
-//		colMeta.getRecordList().add(record, null);
-//	}
-
-	private void bootstrapIndexMetadata() {
-//		BlockPtr metaPtr = new SingleBlockPtr((byte) 0, (2*FileBlockEntryType.DEFAULT_BLOCK_SIZE));
-//		CollectionMetadata colMeta = SchemaMetadata.getInstance().getCollectionMetadata("indexMetaCollection");
-//		SerializedIndexMetadata sim = new SerializedIndexMetadata();
-//		sim.updateHead(metaPtr);
-//		sim.updateRoot(metaPtr);
-//		sim.setIndexMetaFixedColumns(indexMeta)
-//		colMeta.getRecordList().add(scm);
-	}
-	
-	private void loadSchemaMetadata() {
-		loadFileStorageMetadata();
-		loadCollectionMetadata();
-		loadIndexMetadata();
-//		loadShards();
-//		loadIndexShards();
-		nextId = idToNameMap.size();
-	}
-	
-	private void loadFileStorageMetadata() {
-		String s = "select * from fileStorageMetaCollection";
-		DBSelectQuery query = (DBSelectQuery) QueryParser.getInstance().parse(s);
-		Shard shard = new Shard(0, "", "");
-		List<Map<CollectionAlias, TableRecord>> result = query.executeAndGetTableRecord(shard);
-		for (int i = 0; i < result.size(); i++) {
-			Iterator<TableRecord> iter = result.get(i).values().iterator();
-			while (iter.hasNext()) {
-				TableRecord tr = iter.next();
-				Map<ColumnType, DBType> cols = tr.getColumns();
-				SerializedStorageCollectionMetadata scm = new SerializedStorageCollectionMetadata();
-				scm.setColumns(cols);
-				FileBlockEntryType entry = scm.getFileBlockEntryType();
-				
-				entry = FileBlockManager.getInstance().addFileBlockEntry(entry);
-				entry.setRecordId(tr.getRecordId());				
+	public void addColumns(String collectionName, List<ColumnNameMeta> columns) {
+		CollectionMetadata colMeta = getCollectionMetadata(collectionName);
+		List<ColumnNameMeta> newColumns = colMeta.addColumns(columns);
+		if (newColumns.size() > 0) {
+			TransactionId txnId = LogManager.getInstance().startTxn();
+			Set<Object> pinnedBlocks = new HashSet<>();
+			try {
+				for (int i = 0; i < newColumns.size(); i++) {
+					DBType column = newColumns.get(i);
+					ListRecord record = new ObjectListRecord(column);
+					objectColumnList.add(record, txnId, new ColumnSerializerMetadata(SerializerManager.COLUMN_NAME_META_TYPE), pinnedBlocks);
+				}
+			} finally {
+				LogManager.getInstance().commitTxn(txnId);
+				CacheEntryPinner.getInstance().unpin(pinnedBlocks, pinnedBlocks);
 			}
 		}
 	}
 	
-	private void loadCollectionMetadata() {
-		String s = "select * from metaCollection";
-		Shard shard = new Shard(1, "", "");
-		DBSelectQuery query = (DBSelectQuery) QueryParser.getInstance().parse(s);
-		List<Map<CollectionAlias, TableRecord>> result = query.executeAndGetTableRecord(shard);
-		List<CollectionColumn> list = null;
-		for (int i = 0; i < result.size(); i++) {
-			Iterator<TableRecord> iter = result.get(i).values().iterator();
-			while (iter.hasNext()) {
-				TableRecord tr = iter.next();
+	private void create() {
+		TransactionId txnId = LogManager.getInstance().startTxn();
+		Set<Object> pinnedBlocks = new HashSet<>();
+		try {
+			BlockPtr ptr = new SingleBlockPtr((byte) 0, 1*WonderDBPropertyManager.getInstance().getDefaultBlockSize());
+			objectList = WonderDBList.create("_object", ptr, 1, txnId, pinnedBlocks);
 			
-				Map<ColumnType, DBType> cols = tr.getColumns();
-				SerializedCollectionMetadata scm = new SerializedCollectionMetadata();
-				scm.setColumns(cols);
-				
-				list = scm.getCollectionColumns();
-				FixedColumns fc = scm.getFixedColumns();
-				
-				CollectionMetadata colMeta = null; 
-				Shard shrd = null;
-					if (fc.schemaId >= 3) {
-						shrd = new Shard(fc.schemaId, fc.collectionName, fc.collectionName);
-						colMeta = loadCollection(shrd, fc, list);						
-//						createShard(shrd, null, null, null);
-					} else {
-						shrd = new Shard(fc.schemaId, "", "");
-						colMeta = SchemaMetadata.getInstance().getCollectionMetadata(fc.schemaId);
+			ptr = new SingleBlockPtr((byte) 0, 2*WonderDBPropertyManager.getInstance().getDefaultBlockSize());
+			objectColumnList = WonderDBList.create("_column", ptr, 1, txnId, pinnedBlocks);
+			
+			ptr = new SingleBlockPtr((byte) 0, 3*WonderDBPropertyManager.getInstance().getDefaultBlockSize());
+			indexList = WonderDBList.create("_index", ptr, 1, txnId, pinnedBlocks);
+		} finally {
+			LogManager.getInstance().commitTxn(txnId);
+			CacheEntryPinner.getInstance().unpin(pinnedBlocks, pinnedBlocks);
+		}
+	}
+	
+	private void load() {
+		Set<Object> pinnedBlocks = new HashSet<>();
+		
+		try {
+			Map<String, CollectionNameMeta> map = new HashMap<>();
+			Map<String, List<ColumnNameMeta>> collectionColumnMap = new HashMap<>();
+			
+			BlockPtr ptr = new SingleBlockPtr((byte) 0, 1*WonderDBPropertyManager.getInstance().getDefaultBlockSize());
+			objectList = WonderDBList.load("_object", ptr, 1, new ColumnSerializerMetadata(SerializerManager.BLOCK_PTR_LIST_TYPE), pinnedBlocks);
+			ResultIterator iter = objectList.iterator(new ColumnSerializerMetadata(SerializerManager.COLLECTION_NAME_META_TYPE), pinnedBlocks);
+			try {
+				while (iter.hasNext()) {
+					ObjectListRecord record = (ObjectListRecord) iter.next();
+					DBType column = record.getColumn();
+					CollectionNameMeta cnm = (CollectionNameMeta) column;
+					cnm.setRecordId(record.getRecordId());
+					map.put(cnm.getName(), cnm);
+				}
+			} finally {
+				iter.unlock(true);
+			}
+			
+			ptr = new SingleBlockPtr((byte) 0, 2*WonderDBPropertyManager.getInstance().getDefaultBlockSize());
+			objectColumnList = WonderDBList.load("_column", ptr, 1, new ColumnSerializerMetadata(SerializerManager.BLOCK_PTR_LIST_TYPE), pinnedBlocks);
+			iter = objectColumnList.iterator(new ColumnSerializerMetadata(SerializerManager.COLUMN_NAME_META_TYPE), pinnedBlocks);
+			try {
+				while (iter.hasNext()) {
+					ObjectListRecord record = (ObjectListRecord) iter.next();
+					DBType column = record.getColumn();
+					ColumnNameMeta cnm = (ColumnNameMeta) column;
+					cnm.setRecId(record.getRecordId());
+					List<ColumnNameMeta> list = collectionColumnMap.get(cnm.getCollectioName());
+					if (list == null) {
+						list = new ArrayList<>();
+						collectionColumnMap.put(cnm.getCollectioName(), list);
 					}
-					BlockPtr ptr = scm.getHead(shrd);
-					SingleBlockPtrList tail = scm.getTail(shrd);
-					colMeta.createRecordList(shrd, ptr);
-					CollectionTailMgr.getInstance().initializeCollectionData(colMeta.getSchemaId(), shrd, tail);
-				colMeta.setRecordId(tr.getRecordId());
+					list.add(cnm);
+				}
+			} finally {
+				iter.unlock(true);
 			}
-		}
-	}
-	
-//	private void loadShards() {
-//		List<CollectionMetadata> list = new ArrayList<CollectionMetadata>(SchemaMetadata.getInstance().getCollections().values());
-//		for (int i = 0; i < list.size(); i++) {
-//			CollectionMetadata colMeta = list.get(i);
-//			if (colMeta.getSchemaId() < 3) {
-//				continue;
-//			}
-////			SchemaMetadata.getInstance().createShard(shard, indexName, minVal, maxVal)
-//			List<Shard> shards = ClusterManagerFactory.getInstance().getClusterManager().getShards(colMeta.getName());
-//			for (int j = 0; j < shards.size(); j++) {
-//				Shard shard = shards.get(j);
-//				if (shard.getSchemaId() < 0) {
-//					shard = new Shard(colMeta.getSchemaId(), shard.getSchemaObjectName(), shard.getReplicaSetName());
-//				}
-//				SerializedCollectionMetadata scm = new SerializedCollectionMetadata();
-//				BlockPtr head = scm.getHead(shard);
-//				colMeta.createRecordList(shard, head, null);
-//				SingleBlockPtrList tail = scm.getTail(shard);
-//				if (ClusterManagerFactory.getInstance().getClusterManager().isParticipating(shard)) {
-//					CollectionTailMgr.getInstance().initializeCollectionData(colMeta.getSchemaId(), shard, tail);
-//				}
-//			}
-//		}
-//	}
-//	
-	private void loadIndexMetadata() {
-		String s = "select * from indexMetaCollection";
-		DBSelectQuery query = (DBSelectQuery) QueryParser.getInstance().parse(s);
-		Shard shard = new Shard(2, "", "");
-		List<Map<CollectionAlias, TableRecord>> result = query.executeAndGetTableRecord(shard);
-		for (int i = 0; i < result.size(); i++) {
-			Iterator<TableRecord> iter = result.get(i).values().iterator();
-			while (iter.hasNext()) {
-				TableRecord tr = iter.next();
 			
-				Map<ColumnType, DBType> cols = tr.getColumns();
-				SerializedIndexMetadata sim = new SerializedIndexMetadata();
-				sim.setColumns(cols);
-				IndexMetadata idxMeta = sim.getIndexMetaFixedColumns();
-//				List<Shard> shards = ClusterManagerFactory.getInstance().getClusterManager().getShards(idxMeta.getIndex().getCollectionName());
-//				for (int x = 0; x < shards.size(); x++) {
-					try {
-						Shard idxShard = new Shard(idxMeta.getSchemaId(), idxMeta.getName(), idxMeta.getIndex().getCollectionName());
-						BlockPtr root = sim.getRoot(idxShard);
-						BlockPtr head = sim.getHead(idxShard);
-						String fileName = FileBlockManager.getInstance().getFileName(idxShard);
-						add(idxMeta, idxShard, fileName, head, root, false);						
-					} catch (InvalidIndexException e) {
-						e.printStackTrace();
-					} catch (InvalidCollectionNameException e) {
-						e.printStackTrace();
-					}
-//				}
-				idxMeta.setRecordId(tr.getRecordId());
+			Iterator<CollectionNameMeta> iter1 = map.values().iterator();
+			while (iter1.hasNext()) {
+				CollectionNameMeta meta = iter1.next();
+				List<ColumnNameMeta> columns = collectionColumnMap.get(meta.getName());				
+				try {
+					String storageFile = StorageMetadata.getInstance().getFileName(meta.getHead().getFileId());
+					CollectionMetadata colMeta = createCollection(meta.getName(), storageFile, columns);
+					WonderDBList dbList = WonderDBList.load(meta.getName(), meta.getHead(), meta.getConcurrency(), 
+							getTypeMetadata(meta.getName()), pinnedBlocks);
+					colMeta.setDBList(dbList);
+				} catch (InvalidCollectionNameException e) {
+					e.printStackTrace();
+				}
 			}
+
+			ptr = new SingleBlockPtr((byte) 0, 3*WonderDBPropertyManager.getInstance().getDefaultBlockSize());
+			indexList = WonderDBList.load("_index", ptr, 1, new ColumnSerializerMetadata(SerializerManager.BLOCK_PTR_LIST_TYPE), pinnedBlocks);
+			ResultIterator iter2 = indexList.iterator(new ColumnSerializerMetadata(SerializerManager.INDEX_NAME_META_TYPE), pinnedBlocks);
+			try {
+				while (iter2.hasNext()) {
+					ObjectListRecord record = (ObjectListRecord) iter2.next(); 
+					IndexNameMeta inm = (IndexNameMeta) record.getColumn(); 
+					TypeMetadata meta = getIndexMetadata(inm);
+					BTree tree = BTreeImpl.load(inm.isUnique(), inm.getHead(), meta, pinnedBlocks);
+					inm.setTree(tree);
+					indexByName.put(inm.getIndexName(), inm);
+					List<IndexNameMeta> list = collectionIndexes.get(inm.getCollectionName());
+					if (list == null) {
+						list = new ArrayList<>();
+						collectionIndexes.put(inm.getCollectionName(), list);
+					}
+					list.add(inm);
+				}
+			} finally {
+				iter2.unlock(true);
+			}
+		} finally {
+			CacheEntryPinner.getInstance().unpin(pinnedBlocks, pinnedBlocks);
 		}
 	}
 	
-//	private void loadIndexShards() {
-//		String s = "select * from indexMetaCollection";
-//		DBSelectQuery query = (DBSelectQuery) QueryParser.getInstance().parse(s);
-//		Shard shard = new Shard(2, "", "");
-//		List<Map<CollectionAlias, TableRecord>> result = query.executeAndGetTableRecord(shard);
-//		for (int i = 0; i < result.size(); i++) {
-//			Iterator<TableRecord> iter = result.get(i).values().iterator();
-//			while (iter.hasNext()) {
-//				TableRecord tr = iter.next();
-//			
-//				Map<ColumnType, DBType> cols = tr.getColumns();
-//				SerializedIndexMetadata sim = new SerializedIndexMetadata();
-//				sim.setColumns(cols);
-//				IndexMetadata idxMeta = sim.getIndexMetaFixedColumns();
-//				idxMeta = SchemaMetadata.getInstance().getIndex(idxMeta.getSchemaId());
-//				List<Shard> shards = ClusterManagerFactory.getInstance().getClusterManager().getShards(idxMeta.getIndex().getCollectionName());
-//				for (int x = 0; x < shards.size(); x++) {
-//					Shard idxShard = new Shard(idxMeta.getSchemaId(), idxMeta.getIndex().getIndexName(), shards.get(x).getReplicaSetName());
-//					BlockPtr head = sim.getHead(idxShard);
-//					BlockPtr root = sim.getRoot(idxShard);
-//					try {
-//						addShard(idxMeta, idxShard, null, head, root, false);
-//					} catch (InvalidIndexException e) {
-//						e.printStackTrace();
-//					} catch (InvalidCollectionNameException e) {
-//						e.printStackTrace();
-//					}
-//				}
-//				idxMeta.setRecordId(tr.getRecordId());
-//			}
-//		}
-//	}
-//	
-	public List<IndexMetadata> getIndexes(String name) {
-		List<IndexMetadata> list = collectionIndexes.get(name);
+	public WonderDBList createNewList(String id, int concurrentSize, ColumnSerializerMetadata meta) throws InvalidCollectionNameException {
+		ColumnNameMeta cnm = new ColumnNameMeta();
+		cnm.setCollectioName(id);
+		cnm.setColumnName("_internal");
+		cnm.setColumnType(meta.getColumnId());
+		List<ColumnNameMeta> list = new ArrayList<>();
+		list.add(cnm);
+		
+		CollectionMetadata colMeta = createNewCollection(id, null, list, concurrentSize);
+		return colMeta.getRecordList(new Shard(""));
+	}
+	
+	public CollectionMetadata createNewCollection(String collectionName, String fileName, List<ColumnNameMeta> columns, int concurrentSize) throws InvalidCollectionNameException {
+		Set<Object> pinnedBlocks = new HashSet<>();
+		TransactionId txnId = LogManager.getInstance().startTxn();
+		try {
+			String storageFile = StorageMetadata.getInstance().getDefaultFileName();
+			byte fileId = StorageMetadata.getInstance().getDefaultFileId();
+			if (fileName != null) {
+				fileId = StorageMetadata.getInstance().getFileId(fileName);
+				storageFile = fileName;
+			}
+			CollectionMetadata colMeta = createCollection(collectionName, storageFile, columns);
+			long posn = FileBlockManager.getInstance().getNextBlock(fileId);
+			BlockPtr ptr = new SingleBlockPtr(fileId, posn);
+			WonderDBList dbList = WonderDBList.create(collectionName, ptr, concurrentSize, txnId, pinnedBlocks);
+			colMeta.setDBList(dbList);
+			
+			CollectionNameMeta cnm = new CollectionNameMeta();
+			cnm.setConcurrency(10);
+			cnm.setHead(ptr);
+			cnm.setLoggingEnabled(colMeta.isLoggingEnabled);
+			cnm.setName(collectionName);
+			ObjectListRecord record = new ObjectListRecord(cnm);
+			objectList.add(record, txnId, new ColumnSerializerMetadata(SerializerManager.COLLECTION_NAME_META_TYPE), pinnedBlocks);
+			
+			if (columns != null) {
+				for (int i = 0; i < columns.size(); i++) {
+					ColumnNameMeta columnNameMeta = columns.get(i);
+					record = new ObjectListRecord(columnNameMeta);
+					objectColumnList.add(record, txnId, new ColumnSerializerMetadata(SerializerManager.COLUMN_NAME_META_TYPE), pinnedBlocks);
+				}
+			}			
+			return colMeta;
+		} finally {
+			LogManager.getInstance().commitTxn(txnId);
+			CacheEntryPinner.getInstance().unpin(pinnedBlocks, pinnedBlocks);
+		}
+	}
+	
+	public BTree createBTree(String name, boolean unique, int type) {
+		List<Integer> columnIdList = new ArrayList<>();
+		columnIdList.add(type);
+		
+		IndexNameMeta inm = new IndexNameMeta();
+		inm.setAscending(true);
+		inm.setCollectionName("");
+		inm.setColumnIdList(columnIdList);
+		inm.setIndexName(name);
+		inm.setUnique(unique);
+		
+		String storageFile = FileBlockManager.getInstance().getDefaultFileName();
+		IndexNameMeta m = createNewIndex(inm, storageFile);
+		return m.getTree();
+	}
+	
+	
+	public IndexNameMeta createNewIndex(IndexNameMeta inm, String storageFile) {
+		IndexNameMeta temp =indexByName.putIfAbsent(inm.getIndexName(), inm);
+		if (temp != null) {
+			return temp;
+		}
+		TransactionId txnId = LogManager.getInstance().startTxn();
+		Set<Object> pinnedBlocks = new HashSet<>();
+		try {
+			byte fileId = StorageMetadata.getInstance().getFileId(storageFile);
+			long posn = FileBlockManager.getInstance().getNextBlock(fileId);
+			BlockPtr head = new SingleBlockPtr(fileId, posn);
+			BTree tree = BTreeImpl.create(inm.isUnique(), head, 
+					getIndexMetadata(inm), txnId, pinnedBlocks);
+			inm.setTree(tree);
+			inm.setHead(head);
+			
+			ObjectListRecord record = new ObjectListRecord(inm);
+			indexList.add(record, txnId, new ColumnSerializerMetadata(SerializerManager.INDEX_NAME_META_TYPE), pinnedBlocks);
+			List<IndexNameMeta> list = collectionIndexes.get(inm.getCollectionName());
+			if (list == null) {
+				list = new ArrayList<>();
+				collectionIndexes.put(inm.getCollectionName(), list);
+			}
+			list.add(inm);
+		} finally {
+			LogManager.getInstance().commitTxn(txnId);
+			CacheEntryPinner.getInstance().unpin(pinnedBlocks, pinnedBlocks);
+		}
+		return inm;
+	}
+	
+	private CollectionMetadata createCollection(String collectionName, String storageName, List<ColumnNameMeta> columns) throws InvalidCollectionNameException {
+		CollectionMetadata colMeta = new CollectionMetadata(collectionName);
+		CollectionMetadata meta = collections.putIfAbsent(collectionName, colMeta);
+		if (meta != null) {
+			throw new InvalidCollectionNameException("collection already exists: " + collectionName);
+		}
+		
+		colMeta.addColumns(columns);
+		collections.put(collectionName, colMeta);
+		return colMeta;
+	}
+
+	public List<IndexNameMeta> getIndexes(String name) {
+		List<IndexNameMeta> list = collectionIndexes.get(name);
 		if (list == null) {
-			list = new ArrayList<IndexMetadata>();
+			list = new ArrayList<IndexNameMeta>();
 		}
 		return list;
 	}
 	
-	public IndexMetadata getIndex(String name) {
+	public IndexNameMeta getIndex(String name) {
 		return indexByName.get(name);
-	}
-	
-	public IndexMetadata getIndex(int id) {
-		String name = idToNameMap.get(id);
-		return getIndex(name);
-	}
-	
-	public CollectionMetadata getCollectionMetadata(int id) {
-		String name = idToNameMap.get(id);
-		return getCollectionMetadata(name);
-	}
-	
-	public Map<String, CollectionMetadata> getCollections() {
-		return new HashMap<String, CollectionMetadata>(collections);
-	}
-	
-	public void add(Index index, Shard shard) throws InvalidIndexException, InvalidCollectionNameException {
-		add(index, shard, FileBlockManager.getInstance().getDefaultFileName());
-	}
-	
-	public SchemaObjectImpl getSchemaObject(int schemaId) {
-		CollectionMetadata colMetadata = getCollectionMetadata(schemaId);
-		if (colMetadata != null) {
-			return colMetadata;
-		}
-		return getIndex(schemaId);
-	}
-	
-	public void add(Index index, Shard shard, String fileName) throws InvalidIndexException, InvalidCollectionNameException {
-		add(index, shard, null, null, fileName);
-	}
-	
-	private void add(Index index, Shard shard, BlockPtr head, BlockPtr root, String fileName)  throws InvalidIndexException, InvalidCollectionNameException {
-		IndexMetadata meta = new IndexMetadata(index, fileName, -1);
-		add(meta, shard, fileName, head, root);
-	}
-	
-	private void add(IndexMetadata indexMeta, Shard shard, String baseFileName, BlockPtr head, BlockPtr root) throws InvalidIndexException, InvalidCollectionNameException {
-		add(indexMeta, shard, baseFileName, head, root, true);
-	}
-	
-//	private void addShard(IndexMetadata indexMeta, Shard shard, String baseFileName, BlockPtr head, BlockPtr root, boolean serialize) throws InvalidIndexException, InvalidCollectionNameException {
-//		Index index = indexMeta.getIndex();
-//		
-//		int id = indexMeta.getSchemaId();
-//		Shard indexShard = new Shard(id, index.getIndexName(), shard.getReplicaSetName());
-//		if (baseFileName != null) {
-//			FileBlockEntryType entry = FileBlockManager.getInstance().getMetaEntry(baseFileName);
-//			addStorage(indexShard, entry.getBlockSize(), false);
-//		}
-//
-//		BTree tree = new BTreeImpl(id, indexShard, index.isUnique(), head, root);
-//		indexMeta.addShard(indexShard, tree);
-//		if (serialize) {
-////			String newFileName = indexMeta.getFileName() + "_index_" + id + "_" + shardId;
-////			indexMeta.fileName = newFileName;
-////			addStorage(-1, newFileName, entry.getBlockSize(), false);
-////			indexMeta.fileId = FileBlockManager.getInstance().getId(newFileName);  
-//			addIndexMeta(indexMeta, indexShard, head, root);
-//		}
-//	}	
-	
-	private void add(IndexMetadata indexMeta, Shard shard, String baseFileName, BlockPtr head, BlockPtr root, boolean serialize) throws InvalidIndexException, InvalidCollectionNameException {
-		Index index = indexMeta.getIndex();
-		String collectionName = index.getCollectionName();
-		
-		if (indexByName.get(index.getIndexName()) != null) {
-			throw new InvalidIndexException("Index already present: " + index.getIndexName());
-		}
-		
-		int id = indexMeta.getSchemaId();
-		CollectionMetadata colMeta = getCollectionMetadata(index.getCollectionName());
-		if (colMeta == null) {
-			addCollection(index.getCollectionName(), null);
-			colMeta = getCollectionMetadata(index.getCollectionName());
-		}
-		
-		if (id < 0) {
-			id = nextId++;
-		}
-		
-		indexMeta.schemaId = id;
-		indexByName.put(index.getIndexName(), indexMeta);
-		
-		List<IndexMetadata> list = collectionIndexes.get(collectionName);
-		if (list == null) {
-			list = new ArrayList<IndexMetadata>();
-			collectionIndexes.put(collectionName, list);
-		}
-		list.add(indexMeta);
-		idToNameMap.put(id, index.getIndexName());
-		Shard indexShard = new Shard(id, index.getIndexName(), shard.getReplicaSetName());
-		FileBlockEntryType entry = FileBlockManager.getInstance().getEntry(indexShard);
-		if (entry == null) {
-			entry = FileBlockManager.getInstance().getMetaEntry(baseFileName);
-			addStorage(indexShard, entry.getBlockSize(), false);
-		}
-
-		BTree tree = new BTreeImpl(id, indexShard, index.isUnique(), head, root);
-		indexMeta.addShard(indexShard, tree);
-		if (serialize) {
-//			String newFileName = indexMeta.getFileName() + "_index_" + id + "_" + shardId;
-//			indexMeta.fileName = newFileName;
-//			addStorage(-1, newFileName, entry.getBlockSize(), false);
-//			indexMeta.fileId = FileBlockManager.getInstance().getId(newFileName);  
-			addIndexMeta(indexMeta, indexShard, head, root);
-		}
-	}	
-	
-	
-	
-	private void addIndexMeta(IndexMetadata indexMeta, Shard shard, BlockPtr head, BlockPtr root) {
-
-		CollectionMetadata mColMeta = getCollectionMetadata("indexMetaCollection");
-		TransactionId txnId = null;
-		txnId = LogManager.getInstance().startTxn();
-
-		BlockPtr p = new SingleBlockPtr(indexMeta.getFileId(shard), 0);
-		Set<BlockPtr> pinnedBlocks = new HashSet<BlockPtr>();
-		SerializedIndexMetadata serializedIndexMetadata = new SerializedIndexMetadata();
-		try {
-			@SuppressWarnings("unused")
-			IndexBlock ibb = BlockFactory.getInstance().createIndexBranchBlock(p, pinnedBlocks);
-			@SuppressWarnings("unused")
-			long posn = FileBlockManager.getInstance().getNextBlock(shard);
-	
-			serializedIndexMetadata.setIndexMetaFixedColumns(indexMeta);
-			BlockPtr headPtr = new SingleBlockPtr((byte) -1, -1);
-			BlockPtr rootPtr = new SingleBlockPtr((byte) -1, -1);
-			
-			if (head != null) {
-				headPtr = head;
-			}
-
-			if (root != null) {
-				rootPtr = head;
-			}
-			
-			serializedIndexMetadata.updateHeadRoot(indexMeta.getFileId(shard), headPtr, rootPtr, txnId, pinnedBlocks);
-			TableRecord record = new TableRecord(null, serializedIndexMetadata.getColumns());
-			Shard mShard = new Shard(2, "", "");
-			mColMeta.getRecordList(mShard).add(record, null, txnId);
-			indexMeta.setRecordId(record.getRecordId());
-		} finally {
-			CacheEntryPinner.getInstance().unpin(pinnedBlocks, pinnedBlocks);
-			LogManager.getInstance().commitTxn(txnId);
-		}
-
-		try {
-		} finally {
-		}
-
-	}
-
-	private void addIndexShard(Shard shard) {
-
-		TransactionId txnId = null;
-		txnId = LogManager.getInstance().startTxn();
-
-		byte fileId = FileBlockManager.getInstance().getId(shard);
-		BlockPtr p = new SingleBlockPtr(fileId, 0);
-		Set<BlockPtr> pinnedBlocks = new HashSet<BlockPtr>();
-		SerializedIndexMetadata serializedIndexMetadata = new SerializedIndexMetadata();
-		try {
-			@SuppressWarnings("unused")
-			IndexBlock ibb = BlockFactory.getInstance().createIndexBranchBlock(p, pinnedBlocks);
-			@SuppressWarnings("unused")
-			long posn = FileBlockManager.getInstance().getNextBlock(shard);
-	
-//			serializedIndexMetadata.setIndexMetaFixedColumns(indexMeta);
-			BlockPtr headPtr = new SingleBlockPtr((byte) -1, -1);
-			BlockPtr rootPtr = new SingleBlockPtr((byte) -1, -1);
-			
-			serializedIndexMetadata.updateHeadRoot(fileId, headPtr, rootPtr, txnId, pinnedBlocks);
-		} finally {
-			CacheEntryPinner.getInstance().unpin(pinnedBlocks, pinnedBlocks);
-			LogManager.getInstance().commitTxn(txnId);
-		}
-	}
-
-	public CollectionMetadata addCollection(String collectionName, List<CollectionColumn> list) throws InvalidCollectionNameException {
-		String fileName = WonderDBPropertyManager.getInstance().getSystemFile();
-		return addCollectionForDefaultShard(collectionName, fileName, list);
-	}
-	
-	public CollectionMetadata addMetaCollection(String collectionName) throws InvalidCollectionNameException {
-		CollectionMetadata meta = collections.get(collectionName);
-		if (meta != null) {
-			throw new InvalidCollectionNameException(collectionName);
-		}
-		
-		int id = nextId++;
-		idToNameMap.put(id, collectionName);
-		CollectionMetadata colMeta = new CollectionMetadata(collectionName, id);
-		
-		collections.put(colMeta.getName(), colMeta);
-		colMeta.createRecordList(null);
-		return colMeta;
-	}
-	
-	public void createShard(Shard shard, String indexName, IndexKeyType minVal, IndexKeyType maxVal) {
-		
-		CollectionMetadata colMeta = getCollectionMetadata(shard.getSchemaId());
-		if (colMeta.getSchemaId() < 3) {
-			return;
-		}
-		FileBlockEntryType entry = FileBlockManager.getInstance().getEntry(shard);
-		SerializedCollectionMetadata scm = new SerializedCollectionMetadata();
-		BlockPtr head = new SingleBlockPtr((byte) -1, -1);
-		SingleBlockPtrList sbpl = new SingleBlockPtrList();
-//		TransactionId txnId = LogManager.getInstance().startTxn();
-		if (entry == null) {
-			int blockSize = colMeta.getBlockSize();
-			addStorage(shard, blockSize, false);
-			CollectionTailMgr.getInstance().initializeCollectionTailData(shard);
-//			
-//			scm.updateHead(shard, head, txnId);
-//			scm.updateTail(shard, sbpl, txnId);
-		} else {
-			head = scm.getHead(shard);
-			sbpl = scm.getTail(shard);
-			CollectionTailMgr.getInstance().initializeCollectionData(colMeta.getSchemaId(), shard, sbpl);
-//			CollectionTailMgr.getInstance().updateShardHeadTail(shard);
-		}
-		colMeta.createRecordList(shard, head);
-		List<IndexMetadata> list = getIndexes(shard.getSchemaObjectName());
-		for (int i = 0; i < list.size(); i++) {
-			IndexMetadata idxMeta = list.get(i);
-			int blockSize = idxMeta.getBlockSize();
-			Shard idxShard = new Shard(idxMeta.getSchemaId(), idxMeta.getIndex().getIndexName(), shard.getReplicaSetName());
-			entry = FileBlockManager.getInstance().getEntry(idxShard);
-			head = null;
-			BlockPtr root = null;
-			if (entry == null) {
-				addStorage(idxShard, blockSize, false);
-				addIndexShard(idxShard);
-			} else {
-				SerializedIndexMetadata sim = new SerializedIndexMetadata();
-				head = sim.getHead(idxShard);
-				root = sim.getRoot(idxShard);
-			}
-			BTree tree = new BTreeImpl(idxMeta.getSchemaId(), idxShard, idxMeta.getIndex().isUnique(), head, root);
-			idxMeta.addShard(idxShard, tree);
-		}
-	}
-	
-	
-	public CollectionMetadata addCollectionForDefaultShard(String collectionName, String baseFileName, List<CollectionColumn> list) throws InvalidCollectionNameException {
-		if (list == null) {
-			list = new ArrayList<CollectionColumn>();
-		}
-//		list.add(0, new CollectionColumn("objectId", -1, "ss", false, true));
-		CollectionMetadata colMeta = createCollection(collectionName, list);
-		Shard shard = new Shard(colMeta.getSchemaId(), collectionName, collectionName);
-		createStorage(shard, baseFileName);
-		
-		CollectionTailMgr.getInstance().initializeCollectionTailData(shard);
-		@SuppressWarnings("unused")
-		byte fileId = FileBlockManager.getInstance().getId(shard);
-		colMeta.createRecordList(shard);
-		return colMeta;
-	}
-	
-	private CollectionMetadata loadCollection(Shard shard, FixedColumns fc, List<CollectionColumn> columns) {
-		CollectionMetadata colMeta = new CollectionMetadata(fc.collectionName, fc.schemaId);
-//		colMeta.fileId = fc.fileId;
-		colMeta.memoryOnly = fc.memoryOnly;
-//		colMeta.fileName = fc.fileName;
-		colMeta.addColumns(columns);
-		idToNameMap.put(colMeta.getSchemaId(), colMeta.getName());
-		
-		collections.put(colMeta.getName(), colMeta);
-		idToNameMap.put(colMeta.getSchemaId(), colMeta.getName());
-//		colMeta.createRecordList(shard, head, null);
-		return colMeta;
-	}
-	
-	public synchronized CollectionMetadata getCollectionMetadata(String colName) {
-		return collections.get(colName);
-	}
-	
-	public synchronized int addStorage(Shard shard, int blockSize, boolean isDefault) {
-		String fileName = FileBlockManager.getInstance().getFileName(shard);
-		return addStorage(fileName, blockSize, isDefault);
-	}
-	
-	public synchronized int addStorage(String fileName, int blockSize, boolean isDefault) {
-		FileBlockEntryType entry = FileBlockManager.getInstance().getMetaEntry(fileName);
-		if (entry == null) {
-			entry = new FileBlockEntryType(fileName, blockSize, 0);
-			entry.setDefault(isDefault);
-			entry.setFileId((byte) -1);
-			addStorage(entry);
-		} else {
-			throw new FileAlreadyExisits();
-		}
-		return entry.getFileId();		
-	}
-	
-	private void addStorage(FileBlockEntryType entry) {
-		entry = FileBlockManager.getInstance().addFileBlockEntry(entry);
-		CollectionMetadata colMeta = getCollectionMetadata("fileStorageMetaCollection");
-		SerializedStorageCollectionMetadata serializedStorage = new SerializedStorageCollectionMetadata();
-		serializedStorage.setFileBlockEntryType(entry);
-		serializedStorage.updateCurrentFilePosn(entry.getCurrentPosn());
-		TableRecord record = new TableRecord(null, serializedStorage.getColumns());
-		TransactionId txnId = null;
-		txnId = LogManager.getInstance().startTxn();
-		try {
-			colMeta.getRecordList(new Shard(0, "", "")).add(record, null, txnId);
-		} finally {
-			LogManager.getInstance().commitTxn(txnId);
-		}
-		entry.setRecordId(record.getRecordId());
-		FreeBlocksMgr.getInstance().addStorage(entry.getFileId());
 	}
 }

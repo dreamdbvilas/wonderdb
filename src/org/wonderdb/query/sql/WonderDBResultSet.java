@@ -1,3 +1,5 @@
+package org.wonderdb.query.sql;
+
 /*******************************************************************************
  *    Copyright 2013 Vilas Athavale
  *
@@ -13,7 +15,6 @@
  *    See the License for the specific language governing permissions and
  *    limitations under the License.
  *******************************************************************************/
-package org.wonderdb.query.sql;
 
 import java.io.InputStream;
 import java.io.Reader;
@@ -1128,5 +1129,18 @@ public class WonderDBResultSet implements ResultSet {
 	public boolean wasNull() throws SQLException {
 		// TODO Auto-generated method stub
 		return false;
+	}
+
+	@Override
+	public <T> T getObject(int columnIndex, Class<T> type) throws SQLException {
+		// TODO Auto-generated method stub
+		return null;
+	}
+
+	@Override
+	public <T> T getObject(String columnLabel, Class<T> type)
+			throws SQLException {
+		// TODO Auto-generated method stub
+		return null;
 	}
 }
