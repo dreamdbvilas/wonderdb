@@ -1,0 +1,141 @@
+PARSER_BEGIN(FilterParser)
+package org.wonderdb.parser.jtree.filter;
+
+import java.io.StringReader;
+import java.io.Reader;
+import java.util.List;
+import java.util.ArrayList;
+import java.io.InputStream;
+import java.io.ByteArrayInputStream;
+
+public class FilterParser {
+/**  
+  A String based constructor for ease of use.
+  **/
+    public FilterParser(String s) 
+    {
+        this((Reader)(new StringReader(s))); 
+    }
+       
+    public static void main(String args[])
+    {
+        try
+        {
+              String query = args[0];
+              InputStream is = new ByteArrayInputStream(args[0].getBytes());
+              FilterParser t = new FilterParser(is);
+              SimpleNode n = t.Start();
+              n.dump(" ");
+//              ExpressionNode en = SimpleNodeHelper.getInstance().shouldQueryRewriteStartNode(n);
+//              SimpleNodeHelper.getInstance().flattenNode(en);
+              //UQLParser parser = new UQLParser(query);
+              //parser.parse();
+              // System.out.println(parser.parse().toString());
+        }
+        catch(Exception e)
+        {
+              e.printStackTrace();
+        }
+    }    
+}
+
+PARSER_END(FilterParser)
+
+/** Skip these characters, they are considered "white space" **/
+SKIP :                              
+{
+    " "
+    | "\t"
+    | "\r"
+    | "\n"
+
+}
+
+TOKEN [IGNORE_CASE]: /*RESERVED TOKENS FOR UQL */
+{
+      <INSERT: 	"insert">
+   |  <SELECT:  "select">
+   |  <DELETE:  "delete">
+   |  <UPDATE:  "update">
+   |  <WHERE:  	"where">
+   |  <CREATE: "create">
+   |  <INDEX: 	"index">
+   |  <UNIQUE: 	"unique">
+   |  <AND:	"and">
+   |  <OR:	"or">
+   |  <ON: 	"on">
+   |  <TABLE: 	"table">
+   |  <UNION:	"union">
+   |  <UNION_ALL:	"union all">
+}
+
+TOKEN: /*RESERVED TOKENS FOR UQL */
+{
+      <COMMA: 	",">
+   |  <LPAREN: 	"(">
+   |  <RPAREN: 	")">
+}
+
+TOKEN: 
+{
+//	<QUOTED_STRING: "\"" (~["\""])?"\"" >
+//|	<SINGLE_QUOTED_STRING: "'" (~["'"])* "'" >
+//|	<NUMBER : (["0"-"9"])+ >
+//	<STRING : (~[ "(", ")"])+>
+<STRING : (["A"-"Z", "a"-"z", "0"-"9", "+", "-", "/", ".", ",", "'", "\""])+>
+}
+
+/** Root production. */
+Object parse() :
+{
+	Object o;
+}
+{
+  ( ( 	booleanSentence()
+  ) 
+  <EOF> )
+
+  { return null; } 
+}
+
+SimpleNode Start() : {}
+{
+ ( (	booleanSentence()
+  ) <EOF> )
+  { return jjtThis; }
+}
+
+void and() : {}
+{
+	<AND>
+}
+
+void or() : {}
+{
+	<OR>
+}
+
+void function() : {}
+{
+	<STRING> "(" [<STRING>] ( "," <STRING>)*   ")"
+}
+
+void booleanSentence() : {}
+{
+	sentence() ( ( and() | or() ) sentence())*
+}
+
+void repeatString() #void: {}
+{
+	<STRING> (<STRING>)*
+}
+
+void sentence() : {}
+{
+	 LOOKAHEAD(4) repeatString() | nestedSentence() | LOOKAHEAD(4) function()
+}
+
+void nestedSentence() : {}
+{
+	"(" booleanSentence() ")"
+}

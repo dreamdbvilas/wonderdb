@@ -1,0 +1,110 @@
+package org.wonderdb.serializers.block.protobuf;
+
+message ProtoBlockPtr {
+  required bytes fileId = 10;
+  required uint64 posn = 20;
+}
+
+message ProtoRecordId {
+	required ProtoBlockPtr blockPtr = 10;
+	required int32 posn = 20;
+}
+
+message ProtoFileBlockEntry {
+	required string fileName = 10;
+	required int32 blockSize = 20;
+	required bytes fileId = 30;
+	required bool defaultFile = 40;
+	required ProtoRecordId recordId = 50;	
+}
+
+message ProtoCollectionNameMeta {
+	required string name = 10;
+	required ProtoBlockPtr head = 20;
+	required ProtoRecordId recordId = 30;
+	required int32 concurrency = 40;
+	required bool isLoggingEnabled = 50;
+}
+
+message ProtoColumnNameMeta {
+	required int32 coulmnId = 10;
+	required string columnName = 20;
+	required string collectioName = 30;
+	required int32 columnType = 40;
+	required bool isNull = 50;
+	required ProtoRecordId recId = 60;
+}
+
+message ProtoIndexNameMeta {
+	required string indexName = 10;
+	required string collectionName = 20;
+	repeated int32 columnIdList = 30 [packed=true];
+	required ProtoBlockPtr head = 40;
+	required ProtoRecordId recordId = 50;
+	required bool unique = 60;
+	required bool isAscending = 70;
+}
+
+message ProtoIndexKeyType {
+	repeated ProtoColumn column = 10;
+	optional ProtoRecordId recordId = 20;
+}
+
+message ProtoColumn {
+	enum DataTye {
+		strData = 10;
+		intData = 20;
+		longData = 30;
+		doubleData = 40;
+		floatData = 50;
+		byteArrayData = 60;
+		blockPtrData = 70;
+		blockPtrListData = 80;
+		protoCollectionNameMeta = 90;
+		protoColumnNameMeta = 100;
+		protoIndexNamemeta = 110;
+		protoFileBlockEntry = 120;
+		protoIndexKeyType = 130;
+	}
+	 
+	required bool isExtended = 10;
+	optional int32 columnId = 20;
+	optional string strVal = 30;
+	optional int32 intVal = 40;
+	optional uint64 longVal = 50;
+	optional double doubleVale = 60;
+	optional float floatVal = 70;
+	optional bytes byteArray = 80;
+	optional ProtoBlockPtr ptr = 90;
+	repeated ProtoBlockPtr ptrList = 100;
+	optional ProtoCollectionNameMeta collectionNameMeta = 110;
+	optional ProtoColumnNameMeta columnNameMeta = 120;
+	optional ProtoIndexNameMeta indexNameMeta = 130;
+	optional ProtoFileBlockEntry fileBlockEntry = 140;
+	optional ProtoIndexKeyType indexKeyType = 150;
+}
+
+message ProtoRecord {
+    required bool isExtended = 10;
+	optional int32 recordPosn = 30;
+    repeated ProtoColumn columns = 40;
+    optional ProtoBlockPtr extndedPtr = 50;
+}
+
+message ProtoBlock {
+	enum BlockType {
+	  branch = 10;
+	  indexLeaf = 20;
+	  list = 30;
+	}
+	
+	required BlockType type = 40; 
+	required int32 reserved = 50;
+
+	optional int32 maxPosn = 60;
+	optional ProtoBlockPtr next = 70;
+	optional ProtoBlockPtr prev = 80;
+	optional ProtoBlockPtr parent = 90;
+	
+	repeated ProtoRecord records = 100;
+}

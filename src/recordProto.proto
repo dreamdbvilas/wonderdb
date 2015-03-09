@@ -1,0 +1,49 @@
+package org.wonderdb.serializers.block.protobuf;
+
+message BlockPtr {
+  required bytes fileId = 10;
+  required uint64 posn = 20;
+}
+
+message ColumnId {
+  	optional int32 id = 10;
+  	optional string name = 20;
+}
+
+message Column {
+	required bool isExtended = 10;
+	required int32 columnId = 20;
+	optional string strVal = 30;
+	optional int32 intVal = 40;
+	optional uint64 longVal = 50;
+	optional double doubleVale = 60;
+	optional float floatVal = 70;
+	optional bytes byteArray = 80;
+	optional BlockPtr ptr = 90;
+}
+
+message Record {
+    required bool isExtended = 10;
+	required int32 reserved = 20;
+	required int32 recordPosn = 30;
+    repeated Column columns = 40;
+}
+
+message BlockHeader {
+	enum BlockType {
+	  branch = 10;
+	  leaf = 20;
+	}
+	required BlockPtr ptr = 10;
+	required uint64 lastAccessTime = 20;
+	required bool isExtended = 30;
+	required BlockType type = 40; 
+	required int32 reserved = 50;
+}
+
+message Block {
+	required int32 headerSize = 10;
+	required BlockHeader header = 20;
+	required int32 recordsSize = 30;
+	repeated Record records = 40;
+}

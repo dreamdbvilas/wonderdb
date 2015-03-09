@@ -1,0 +1,513 @@
+PARSER_BEGIN(UQLParser)
+package org.wonderdb.parser.jtree;
+
+import java.io.StringReader;
+import java.io.Reader;
+import java.util.List;
+import java.util.ArrayList;
+import java.io.InputStream;
+import java.io.ByteArrayInputStream;
+
+public class UQLParser {
+/**  
+  A String based constructor for ease of use.
+  **/
+    public UQLParser(String s) 
+    {
+        this((Reader)(new StringReader(s))); 
+    }
+       
+    public static void main(String args[])
+    {
+        try
+        {
+              String query = args[0];
+              InputStream is = new ByteArrayInputStream(args[0].getBytes());
+              UQLParser t = new UQLParser(is);
+              SimpleNode n = t.Start();
+              n.dump(" ");
+//              ExpressionNode en = SimpleNodeHelper.getInstance().shouldQueryRewriteStartNode(n);
+//              SimpleNodeHelper.getInstance().flattenNode(en);
+             //UQLParser parser = new UQLParser(query);
+              //parser.parse();
+              // System.out.println(parser.parse().toString());
+        }
+        catch(Exception e)
+        {
+              e.printStackTrace();
+        }
+    }    
+}
+
+PARSER_END(UQLParser)
+
+
+/** Skip these characters, they are considered "white space" **/
+SKIP :                              
+{
+    " "
+    | "\t"
+    | "\r"
+    | "\n"
+
+}
+
+TOKEN [IGNORE_CASE]: /*RESERVED TOKENS FOR UQL */
+{
+      <INSERT: 	"insert">
+   |  <SELECT:  "select">
+   |  <DELETE:  "delete">
+   |  <UPDATE:  "update">
+   |  <WHERE:  	"where">
+   |  <SET:  	"set">
+   |  <INTO:  	"into">
+   |  <VALUES:  "values">
+   |  <AND:  	"and">
+   |  <OR:  	"or">
+   |  <FROM:  	"from">
+   |  <INT: 	"int">
+   |  <LONG: 	"long">
+   |  <DOUBLE: 	"double">
+   |  <FLOAT: 	"float">
+   |  <STR: 	"string">
+   |  <CREATE: "create">
+   |  <INDEX: 	"index">
+   |  <UNIQUE: 	"unique">
+   |  <ON: 	"on">
+   |  <TABLE: 	"table">
+   |  <SHOW: 	"show">
+   |  <SCHEMA: 	"schema">
+   |  <LIKE:	"like">
+   |  <STORAGE:	"storage">
+   |  <IS_DEFAULT:	"is_default">
+   |  <YES:	"yes">
+   |  <NO:	"no">
+   |  <ALTER:	"alter">
+   |  <ADD:	"add">
+   |  <NULL:	"null">
+   |  <SHARD:	"shard">
+   |  <REPLICASET:	"replicaset">
+   |  <TO:	"to">
+   |  <UNION:	"union">
+   |  <STORAGES:	"storages">
+   |  <LOGGING:	"logging">
+   |  <ENABLED:	"enabled">
+   |  <DISABLED:	"disabled">
+   |  <EXPLAIN:	"explain">
+   |  <PLAN:	"plan">
+   |  <SHUTDOWN:	"shutdown">
+   |  <DEFAULT_STORAGE:	"default storage">
+   |  <UNION_ALL:	"union all">
+}
+
+TOKEN: /*RESERVED TOKENS FOR UQL */
+{
+      <COMMA: 	",">
+   |  <LPAREN: 	"(">
+   |  <RPAREN: 	")">
+   |  <EQUALS: 	"=">
+   |  <NOTEQUAL: "<>">
+   |  <GE: 	">=">
+   |  <LE: 	"<=">
+   |  <GT: 	">">
+   |  <LT: 	"<">
+   |  <PLUS: 	"+">
+   |  <MINUS: 	"-">
+   |  <DIV: 	"/">
+   |  <MUL: 	"*">
+   |  <Q:	"?">
+}
+
+TOKEN: 
+{
+	<QUOTED_STRING: "\"" (~["\""])? "\"" >
+|	<SINGLE_QUOTED_STRING: "'" (~["'"])* "'" >
+|	<NUMBER : (["0"-"9"])+ >
+|	<STRING : (["A"-"Z", "a"-"z"])(["A"-"Z", "a"-"z", "0"-"9"])*>
+}
+
+void number() : {}
+{
+	[minus()] decimal() ["." precision()]
+}
+
+void decimal() : {}
+{
+	<NUMBER>
+}
+
+void precision() : {}
+{
+	<NUMBER>
+}
+
+void columnAndAlias() : {}
+{
+	( <STRING> | <MUL> ) ["." ( <STRING> | <MUL> )]
+}
+
+void literal() #void : {}
+{
+	multiplicativeExpression()
+}
+
+void literalList() : {}
+{
+	literal() ( <COMMA> literal() )*
+}
+
+void insertColumnList() : {}
+{
+	columnAndAlias() ( <COMMA> columnAndAlias() )*
+}
+
+void selectColumnList() : {}
+{
+	columnAndAlias() ( <COMMA> columnAndAlias() )*
+}
+
+void tableDef() : {}
+{
+	<STRING> [ <STRING> ]
+}
+
+void tableDefList() #void : {}
+{
+	tableDef() ( <COMMA> tableDef() )*
+}
+
+void updateColumn() : {}
+{
+	columnAndAlias() <EQUALS> literal()
+}
+
+void updateColumnList() #void : {}
+{
+	updateColumn() ( <COMMA> updateColumn() )*
+}
+
+/** Root production. */
+Object parse() :
+{
+	Object o;
+}
+{
+  ( ( 	selectStmt() |
+  	insertStmt() |
+  	updateStmt() |
+  	deleteStmt()
+  ) 
+  ";" )
+
+  { return null; } 
+}
+
+SimpleNode Start() : {}
+{
+ ( (	selectUnionStmt() |
+  	insertStmt() |
+  	updateStmt() |
+  	deleteStmt() |
+  	LOOKAHEAD(2) createTable() |
+  	LOOKAHEAD(2) createIndex() |
+  	alterTable() |
+  	LOOKAHEAD(2) createStorage() |
+  	LOOKAHEAD(2) showStorages() |
+  	LOOKAHEAD(2) showSchema() |
+  	LOOKAHEAD(2) showTable() |
+  	explainPlan() |
+  	shutdown()
+  ) ";")
+  { return jjtThis; }
+}
+
+void filterExpression() : {}
+{
+	compareEquation()
+}
+
+void compareEquation()  : {}
+{
+	equalityEquation() ( LOOKAHEAD(2) ( and() | or() ) equalityEquation() )*
+}
+
+void equalityEquation() : {} // void here!
+{
+	multiplicativeExpression() [ LOOKAHEAD(2) ( gt() | lt() | ge() | le() | eq() | ne() ) multiplicativeExpression()]
+}
+
+/** A Multiplicative Expression. */
+void multiplicativeExpression()  : {} // void here !
+{
+  unaryExpression() ( LOOKAHEAD(2) ( plus() | minus() | mul() | div() ) unaryExpression() )*
+}
+
+/** A Unary Expression. */
+void unaryExpression() /* #void */ : {}
+{
+  ( LOOKAHEAD(2) fn() | groupedCompareEquation() | str() | columnAndAlias() | number() | q())
+}
+
+void groupedCompareEquation() : {} // void here!
+{
+	"(" compareEquation() ")"
+}
+
+void plus() : {}
+{
+	<PLUS>
+}
+
+void q() : {}
+{
+	<Q>
+}
+
+void str() : {}
+{
+	<QUOTED_STRING> | <SINGLE_QUOTED_STRING>
+}
+
+void gt() : {}
+{
+	<GT>
+}
+
+void lt() : {}
+{
+	<LT>
+}
+
+void ge() : {}
+{
+	<GE>
+}
+
+void le() : {}
+{
+	<LE>
+}
+
+void eq() : {}
+{
+	<EQUALS>
+}
+
+void ne() : {}
+{
+	<NOTEQUAL>
+}
+
+
+void minus() : {}
+{
+	<MINUS>
+}
+
+void mul() : {}
+{
+	<MUL>
+}
+
+void div() : {}
+{
+	<DIV>
+}
+
+void and() : {}
+{
+	<AND>
+}
+
+void or() : {}
+{
+	<OR>
+}
+
+void selectUnionStmt() #void : 
+{
+}
+{
+	selectStmt() (( union() | unionAll() ) selectStmt())*
+}
+
+void union() : {}
+{
+	<UNION>
+}
+
+void unionAll() : {}
+{
+	<UNION_ALL>
+}
+
+void selectStmt() :
+{
+}
+{
+	<SELECT>
+	literalList()
+	<FROM>
+	tableDefList()
+	[ <WHERE> filterExpression() ]
+}
+
+void insertStmt() :
+{
+}
+{
+	<INSERT> <INTO> tableName()
+	( <LPAREN> insertColumnList() <RPAREN> 
+		( <VALUES> <LPAREN> literalList() <RPAREN> |
+		  selectStmt() ) |
+	  selectStmt() )
+}
+
+void updateStmt() :
+{
+}
+{
+	<UPDATE> tableDef()
+	<SET> updateColumnList()
+	[ <WHERE> filterExpression() ]
+}
+
+void deleteStmt() :
+{
+}
+{
+	<DELETE> tableDef()
+	[ <WHERE> filterExpression() ]
+}
+
+/** An Identifier. */
+void identifier() : {}
+{
+  <STRING>
+}
+
+/** An Integer. */
+void integer() #void : {}
+{
+  number()
+}
+
+void fn() : {}
+{
+	identifier() "(" [ multiplicativeExpression() ] ( <COMMA> multiplicativeExpression() )* ")"
+}
+
+void createTable() : {}
+{
+	<CREATE> <TABLE> tableName() <LPAREN> createTableColumnDef() ( <COMMA> createTableColumnDef() )* <RPAREN>
+	[ <STORAGE> storageName() ]
+	[ <LOGGING> ( <ENABLED> | <DISABLED> ) ]
+}
+
+void tableName() : {}
+{
+	<STRING>
+}
+
+void indexName() : {}
+{
+	<STRING>
+}
+
+void tableColumnName() : {}
+{
+	<STRING>
+}	
+
+void tableColumnType() : {}
+{
+	<INT> | <LONG> | <DOUBLE> | <FLOAT> | <STR> | <STRING>
+}	
+
+void createTableColumnDef() : {}
+{
+	tableColumnName() tableColumnType()
+}
+
+void createStorage() : {}
+{
+	<CREATE> [ defaultStorage() ] <STORAGE> storageName() [ storageSize() ]
+}
+
+void storageName() : {}
+{
+	<SINGLE_QUOTED_STRING>
+}
+
+void storageSize() : {}
+{
+	<NUMBER>
+}
+
+void defaultStorage() : {}
+{
+	<DEFAULT_STORAGE>
+}
+
+void createIndex() : {}
+{
+	<CREATE> [ unique() ] <INDEX> indexName() <ON> tableName() <LPAREN>
+		indexColumn() ( <COMMA> indexColumn() )* <RPAREN>
+		[ <STORAGE> storageName() ]
+}
+
+void indexColumn() : {}
+{
+	LOOKAHEAD(2) identifier() | fnDef()
+}
+
+//void fnDef() : {}
+//{
+//	fnName() <LPAREN> [ ( identifier() | number() ) ( LOOKAHEAD(2) <COMMA> ( identifier() | number() ) )* ]
+//}
+
+void fnDef() : {}
+{
+	fnName() <LPAREN> [ indexColumn() ( LOOKAHEAD(2) <COMMA> indexColumn() )* ] <RPAREN>
+}
+
+void fnName() : {}
+{
+	<STRING>
+}
+
+void unique() : {}
+{
+	<UNIQUE>
+}
+
+void alterTable() : {}
+{
+	<ALTER> <TABLE> tableName() <ADD>
+	<LPAREN> createTableColumnDef() ( <COMMA> createTableColumnDef() )* <RPAREN>
+}
+
+void showStorages() : {}
+{
+	<SHOW> <STORAGES>
+}
+
+void showSchema() : {}
+{
+	<SHOW> <SCHEMA>
+}
+
+void explainPlan() : {}
+{
+	<EXPLAIN> <PLAN> selectStmt()
+}
+
+void showTable() : {}
+{
+	<SHOW> <TABLE> tableName()
+}
+
+void shutdown() : {}
+{
+	<SHUTDOWN>
+}
