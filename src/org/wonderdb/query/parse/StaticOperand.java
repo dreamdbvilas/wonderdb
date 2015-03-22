@@ -1,7 +1,5 @@
 package org.wonderdb.query.parse;
 
-import java.util.Set;
-
 import org.wonderdb.expression.Operand;
 import org.wonderdb.types.DBType;
 import org.wonderdb.types.IndexKeyType;
@@ -37,7 +35,7 @@ public class StaticOperand implements Operand {
 	}
 
 	@Override
-	public DBType getValue(TableRecord trt, TypeMetadata meta, Set<Object> pinnedBlocks) {
+	public DBType getValue(TableRecord trt, TypeMetadata meta) {
 		return value;
 	}	
 }

@@ -83,23 +83,23 @@ public class CacheEvictor<Key, Data> implements Runnable {
 //			System.out.println("Starting eviction");
 			while (true) {
 				List<Cacheable<Key, Data>> list = cacheMap.getBucket(bucket, true);
-				Set<Object> pinnedBlocks = new HashSet<>();
+//				Set<Object> pinnedBlocks = new HashSet<>();
 				try {
 					for (int j = 0; j < list.size(); j++) {
 						Cacheable<Key, Data> e = list.get(j);
-						CacheEntryPinner.getInstance().pin(e.getPtr(), pinnedBlocks);
 						if (!pinner.isPinned(e.getPtr()) && !cacheMap.isChanged(e.getPtr())) {
+//							CacheEntryPinner.getInstance().pin(e.getPtr(), pinnedBlocks);
 							if (eagerCleanup) {
 								Cacheable<Key, Data> ref = cacheHandler.removeForEvict(e.getPtr());
-								if (pinner.isPinned(e.getPtr()) || cacheMap.isChanged(e.getPtr())) {
-									cacheMap.addIfAbsent(ref);
-								}
+//								if (pinner.isPinned(e.getPtr()) || cacheMap.isChanged(e.getPtr())) {
+//									cacheMap.addIfAbsent(ref);
+//								}
 							} else {
 								if (e.getLastAccessTime() < lastRunTime) {
 									Cacheable<Key, Data> ref = cacheHandler.removeForEvict(e.getPtr());
-									if (pinner.isPinned(e.getPtr()) || cacheMap.isChanged(e.getPtr())) {
-										cacheMap.addIfAbsent(ref);
-									}
+//									if (pinner.isPinned(e.getPtr()) || cacheMap.isChanged(e.getPtr())) {
+//										cacheMap.addIfAbsent(ref);
+//									}
 								}
 							}
 						}
@@ -107,7 +107,7 @@ public class CacheEvictor<Key, Data> implements Runnable {
 				} finally {
 					cacheMap.returnBucket(bucket, true);
 					bucket = ++bucket % size;
-					CacheEntryPinner.getInstance().unpin(pinnedBlocks, pinnedBlocks);
+//					CacheEntryPinner.getInstance().unpin(pinnedBlocks, pinnedBlocks);
 				}
 
 				if (cacheState.getTotalCount() <= objCountAfterRun) {

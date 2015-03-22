@@ -1,18 +1,13 @@
 package org.wonderdb.types.record;
 
+import java.util.HashMap;
 import java.util.Iterator;
-import java.util.List;
 import java.util.Map;
-import java.util.Set;
 
-import org.wonderdb.serialize.ColumnSerializer;
-import org.wonderdb.types.ColumnSerializerMetadata;
 import org.wonderdb.types.DBType;
 import org.wonderdb.types.Extended;
 import org.wonderdb.types.ExtendedColumn;
 import org.wonderdb.types.RecordId;
-import org.wonderdb.types.TableRecordMetadata;
-import org.wonderdb.types.TypeMetadata;
 
 public class TableRecord implements ListRecord  {
 	Map<Integer, DBType> columnMap = null;
@@ -38,21 +33,21 @@ public class TableRecord implements ListRecord  {
 		this.columnMap = columnMap;
 	}
 	
-	public void loadExtendedColumns(List<Integer> columns, TypeMetadata meta, Set<Object> pinnedBlocks) {
-		TableRecordMetadata trsm = (TableRecordMetadata) meta;
-		Iterator<Integer> iter = columns.iterator();
-		while (iter.hasNext()) {
-			int columnId = iter.next();
-			DBType column = columnMap.get(columnId);
-			if (column instanceof ExtendedColumn && ((ExtendedColumn) column).getValue() == null) {
-				ColumnSerializer.getInstance().readFull(column, new ColumnSerializerMetadata(trsm.getColumnIdTypeMap().get(columnId)), pinnedBlocks);
-			}
+	public DBType getValue(int colId) {
+		DBType dt = columnMap.get(colId);
+		if (dt instanceof ExtendedColumn) {
+			return ((ExtendedColumn) dt).getValue(null);
 		}
+		return dt;
 	}
 	
 	@Override
 	public DBType copyOf() {
-		throw new RuntimeException("Method not supported");
+//		throw new RuntimeException("Method not supported");
+		TableRecord record = new TableRecord(columnMap);
+		record.setRecordId(recordId);
+		record.columnMap = new HashMap<>(columnMap);
+		return record;
 	}
 
 	@Override

@@ -31,6 +31,7 @@ public abstract class BaseBlock implements Block {
 	BlockPtr ptr = null;
 	BlockPtr nextPtr = null;
 	BlockPtr prevPtr = null;
+	int resourceCount = 1;
 	
 	public BaseBlock(BlockPtr ptr) {
 		this.ptr = (BlockPtr) ptr.clone();//.copyOf();
@@ -126,4 +127,13 @@ public abstract class BaseBlock implements Block {
 	public List<Record> getFull() {
 		throw new RuntimeException("Method not supported");
 	}
+	
+	public int getResourceCount() {
+		return resourceCount;
+	}
+	
+	public void adjustResourceCount(int count) {
+		this.resourceCount = this.resourceCount + count;
+	}
+
 }

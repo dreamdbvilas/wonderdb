@@ -47,7 +47,10 @@ public class SerializedBlockImpl implements Cacheable<BlockPtr, ChannelBuffer> {
 	public ChannelBuffer getData() {
 		fullBuffer.clear();
 		fullBuffer.writerIndex(fullBuffer.capacity());
-		return fullBuffer.slice(HEADER_SIZE, fullBuffer.capacity()-HEADER_SIZE);
+		ChannelBuffer data = fullBuffer.slice(HEADER_SIZE, fullBuffer.capacity()-HEADER_SIZE);
+		data.clear();
+		data.writerIndex(data.capacity());
+		return data;
 	}
 	
 	public int hashCode() {

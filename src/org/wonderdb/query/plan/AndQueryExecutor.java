@@ -23,8 +23,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-import org.wonderdb.block.BlockManager;
-import org.wonderdb.block.ListBlock;
 import org.wonderdb.cache.impl.CacheEntryPinner;
 import org.wonderdb.cluster.Shard;
 import org.wonderdb.collection.IndexResultContent;
@@ -35,14 +33,11 @@ import org.wonderdb.parser.jtree.QueryEvaluator;
 import org.wonderdb.parser.jtree.SimpleNode;
 import org.wonderdb.query.parse.CollectionAlias;
 import org.wonderdb.schema.SchemaMetadata;
-import org.wonderdb.serialize.ColumnSerializer;
-import org.wonderdb.serialize.record.RecordSerializer;
-import org.wonderdb.types.ColumnSerializerMetadata;
-import org.wonderdb.types.DBType;
-import org.wonderdb.types.Extended;
 import org.wonderdb.types.RecordId;
 import org.wonderdb.types.StringType;
 import org.wonderdb.types.TableRecordMetadata;
+import org.wonderdb.types.record.RecordManager;
+import org.wonderdb.types.record.RecordManager.BlockAndRecord;
 import org.wonderdb.types.record.TableRecord;
 
 
@@ -77,14 +72,12 @@ public class AndQueryExecutor {
 			return;
 		}
 		ResultIterator iter = null;
-		ListBlock lockedBlock = null;
 		try {
 			iter = plan.get(posn).iterator(context, shard, selectColumnNames.get(posn), writeLock);
 			String schemaObjectName = plan.get(posn).getCollectionAlias().getCollectionName();
 			while (iter.hasNext()) {
 				CollectionAlias ca = plan.get(posn).getCollectionAlias();
 				ResultContent resultContent = (ResultContent) iter.next();
-//				ResultContent resultContent = getResultContent(record, iter.getTypeMetadata());
 				context.add(ca, resultContent);
 				boolean filter;
 				filter = filterTree(context, tree, fromMap);
@@ -97,30 +90,19 @@ public class AndQueryExecutor {
 							List<Integer> colIdList = selectColumnNames.get(ca);
 							for (int i = 0; i < colIdList.size(); i++) {
 								int colId = colIdList.get(i);
-								if (!resultContent.getAllColumns().containsKey(colId)) {
-									columnsToFetchFromTable.add(colId);
-								}
+								columnsToFetchFromTable.add(colId);
+//								if (!resultContent.getAllColumns().containsKey(colId)) {
+//									columnsToFetchFromTable.add(colId);
+//								}
 							}
+							BlockAndRecord bar = null;
 							if (columnsToFetchFromTable.size() > 0) {
-								try {
-									TableRecordMetadata meta = (TableRecordMetadata) SchemaMetadata.getInstance().getTypeMetadata(schemaObjectName);
-									lockedBlock = (ListBlock) BlockManager.getInstance().getBlock(resultContent.getRecordId().getPtr(), meta, pinnedBlock);
-									lockedBlock.readLock();
-									TableRecord tr = (TableRecord) lockedBlock.getRecord(resultContent.getRecordId().getPosn());
-									if (tr instanceof Extended) {
-										RecordSerializer.getInstance().readFull(tr, meta, pinnedBlock);
-									}
-									for (int i = 0; i < columnsToFetchFromTable.size(); i++) {
-										int colId = colIdList.get(i);
-										DBType column = tr.getColumnMap().get(colId);
-										if (column instanceof Extended) {
-											ColumnSerializer.getInstance().readFull(column, new ColumnSerializerMetadata(meta.getColumnIdTypeMap().get(colId)), pinnedBlock);
-										}
-									}
-									resultContent = new StaticTableResultContent(tr);
-								} finally {
-									lockedBlock.readUnlock();									
+								TableRecordMetadata meta = (TableRecordMetadata) SchemaMetadata.getInstance().getTypeMetadata(schemaObjectName);
+								bar = RecordManager.getInstance().getTableRecordAndLock(resultContent.getRecordId(), columnsToFetchFromTable, meta, pinnedBlock);
+								if (bar == null || bar.block == null || bar.record == null) {
+									continue;
 								}
+								resultContent = new StaticTableResultContent((TableRecord) bar.record);
 							}
 							context.map.put(ca, resultContent);
 							filter = filterTree(context, tree, fromMap);

@@ -3,10 +3,9 @@ package org.wonderdb.block;
 import java.util.Comparator;
 import java.util.Set;
 
-import org.wonderdb.serialize.SerializerManager;
 import org.wonderdb.types.BlockPtr;
-import org.wonderdb.types.ColumnSerializerMetadata;
 import org.wonderdb.types.DBType;
+import org.wonderdb.types.ExtendedColumn;
 import org.wonderdb.types.IndexKeyType;
 import org.wonderdb.types.TypeMetadata;
 import org.wonderdb.types.record.IndexRecord;
@@ -65,6 +64,10 @@ public class IndexCompareIndexQuery implements IndexQuery, Comparator<DBType> {
 						meta, pinnedBlocks);
 				column = block.getMaxKey(meta);
 			} 
+			
+			if (column instanceof ExtendedColumn) {
+				column = ((ExtendedColumn) column).getValue(null);
+			}
 			
 			IndexKeyType ikt = (IndexKeyType) ((IndexCompareIndexQuery) o2).key;
 			int val = ikt.compareTo(column);

@@ -19,6 +19,7 @@ import org.wonderdb.schema.CollectionMetadata;
 import org.wonderdb.schema.FunctionManager;
 import org.wonderdb.schema.SchemaMetadata;
 import org.wonderdb.schema.WonderDBFunction;
+import org.wonderdb.types.ByteArrayType;
 import org.wonderdb.types.ColumnNameMeta;
 import org.wonderdb.types.DBType;
 import org.wonderdb.types.DoubleType;
@@ -426,6 +427,8 @@ public class QueryEvaluator {
 				node.jjtSetValue(((FloatType) dt).get());
 			} else if (dt instanceof DoubleType) {
 				node.jjtSetValue(((DoubleType) dt).get());
+			} else if (dt instanceof ByteArrayType) {
+				node.jjtSetValue(dt);
 			} else if (dt instanceof UndefinedType) {
 				node.jjtSetValue(dt);
 			} else {

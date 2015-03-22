@@ -95,7 +95,7 @@ public class SplitFactory {
 		DBType column = lastRecord.getColumn();
 		DBType dt = column;
 		if (dt instanceof BlockPtr) {
-			IndexBlock b = (IndexBlock) BlockManager.getInstance().getBlock((BlockPtr) dt, new ColumnSerializerMetadata(SerializerManager.BLOCK_PTR), pinnedBlocks);
+			IndexBlock b = (IndexBlock) BlockManager.getInstance().getBlock((BlockPtr) dt, meta, pinnedBlocks);
 			block.setMaxKey(b.getMaxKey(meta));
 		} else {
 			block.setMaxKey(dt);
@@ -105,7 +105,7 @@ public class SplitFactory {
 	public List<IndexBlock> split(IndexBlock block, Set<Block> changedBlocks, Set<Object> pinnedBlocks, TypeMetadata meta) {
 		List<IndexBlock> retList = new ArrayList<IndexBlock>();
 		retList.add(block);
-		boolean branchBlock = false;
+		boolean branchBlock = block instanceof IndexBranchBlock;
 		List<List<Record>> splitList = split(block, meta);
 		block.getData().clear();
 		block.getData().addAll(splitList.get(0));
@@ -144,7 +144,7 @@ public class SplitFactory {
 				tmpBlock.setPrev(block.getPtr());
 			} else {
 				for (int j = 0; j < tmpBlock.getData().size(); j++) {
-					BlockPtr p = (BlockPtr) ((ObjectRecord) tmpBlock.getData().get(i)).getColumn();
+					BlockPtr p = (BlockPtr) ((ObjectRecord) tmpBlock.getData().get(j)).getColumn();
 					CacheEntryPinner.getInstance().pin(p, pinnedBlocks);
 					Block b = BlockManager.getInstance().getBlock(p, meta, pinnedBlocks);
 					b.setParent(tmpBlock.getPtr());

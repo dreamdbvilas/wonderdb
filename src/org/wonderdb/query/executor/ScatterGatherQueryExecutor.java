@@ -322,7 +322,7 @@ public class ScatterGatherQueryExecutor {
 		@Override
 		public Integer call() throws Exception {
 			DBInsertQuery q = (DBInsertQuery) query;
-			return TableRecordManager.getInstance().addTableRecord(q.getCollectionName(), map, shard);
+			return TableRecordManager.getInstance().addTableRecord(q.getCollectionName(), map, shard, false);
 		}
 	}
 	

@@ -3,6 +3,7 @@ package org.wonderdb.cache.impl;
 import org.wonderdb.cache.CacheResourceProvider;
 import org.wonderdb.cache.Cacheable;
 import org.wonderdb.cache.InflightReads;
+import org.wonderdb.types.BlockPtr;
 
 /*******************************************************************************
  *    Copyright 2013 Vilas Athavale
@@ -29,10 +30,11 @@ public class BaseCacheHandler<Key, Data> implements CacheHandler<Key, Data> {
 	public CacheResourceProvider<Key, Data> cacheResourceProvider = null;
 	CacheEvictor<Key, Data> eagerEvictor = null;
 	CacheEvictor<Key, Data> normalEvictor = null;
-	
+	boolean readFromFile = false;
 	public BaseCacheHandler(MemoryCacheMap<Key, Data> cacheMap, CacheBean cacheBean, CacheState cacheState, 
 			CacheLock cacheLock, CacheResourceProvider<Key, Data> cacheResourceProvider, 
-			InflightReads<Key, Data> inflightReads) {
+			boolean readFromFile) {
+		this.readFromFile = readFromFile;
 		this.cacheMap = cacheMap;
 		this.cacheLock = cacheLock;
 		this.cacheBean = cacheBean;
@@ -49,6 +51,8 @@ public class BaseCacheHandler<Key, Data> implements CacheHandler<Key, Data> {
 		normalCleanupThread.start();
 		
 	}
+	
+	
 	
 	public long getBlockCount() {
 		return cacheState.getTotalCount();
@@ -70,6 +74,9 @@ public class BaseCacheHandler<Key, Data> implements CacheHandler<Key, Data> {
 		}
 		
 		Cacheable<Key, Data> block = getFromCache(ptr);
+		if (block == null && readFromFile) {
+			return (Cacheable<Key, Data>) InflightFileReader.getInstance().getBlock((BlockPtr) ptr);
+		}
 		return block;
 	}
 	

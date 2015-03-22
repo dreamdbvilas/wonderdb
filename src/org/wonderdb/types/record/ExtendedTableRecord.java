@@ -1,5 +1,7 @@
 package org.wonderdb.types.record;
 
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -23,5 +25,19 @@ public class ExtendedTableRecord extends TableRecord implements Extended {
 	@Override
 	public void setPtrList(List<BlockPtr> list) {
 		this.ptrList = list;
+	}
+	
+	@Override
+	public DBType copyOf() {
+		ExtendedTableRecord etr = new ExtendedTableRecord(columnMap, ptrList);
+		etr.columnMap = new HashMap<>(columnMap);
+		etr.ptrList = new ArrayList<>(ptrList);
+		etr.setRecordId(recordId);
+		return etr;
+	}
+	
+	public int getResourceCount() {
+		int s = super.getResourceCount();
+		return s+ptrList.size();
 	}
 }

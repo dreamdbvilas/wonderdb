@@ -36,6 +36,8 @@ public class WonderDBPropertyManager {
 	private static final String WRITER_THREAD_POOL_CORE_SIZE = "writerThreadPool.coreSize";
 	private static final String WRITER_THREAD_POOL_MAX_SIZE = "writerThreadPool.maxSize";
 	private static final String WRITER_THREAD_POOL_QUEUE_SIZE = "writerThreadPool.queueSize";
+
+	private static final String DISK_ASYNC_WRITER_THREAD_POOL_QUEUE_SIZE = "disk.asyncWriterThreadPool.queueSize";
 	
 	private static final String NETTY_BOSS_THREAD_POOL_CORE_SIZE = "nettyBossThreadPool.coreSize";
 	private static final String NETTY_BOSS_THREAD_POOL_MAX_SIZE = "nettyBossThreadPool.maxSize";
@@ -467,5 +469,13 @@ public class WonderDBPropertyManager {
 	public int getDefaultBlockSize() {
 		String value = properties.getProperty(DEFAULT_BLOCK_SIZE, "2048");
 		return Integer.parseInt(value);
+	}
+	
+	public int getDiskAsyncWriterThreadPoolSize() {
+		String val = properties.getProperty(DISK_ASYNC_WRITER_THREAD_POOL_QUEUE_SIZE);
+		if (val == null) {
+			return 5;
+		}
+		return Integer.parseInt(val);
 	}
 }

@@ -1,7 +1,5 @@
 package org.wonderdb.expression;
 
-import java.util.Set;
-
 import org.wonderdb.parser.jtree.SimpleNode;
 import org.wonderdb.types.DBType;
 import org.wonderdb.types.IndexKeyType;
@@ -20,8 +18,7 @@ public class TreeOperand implements Operand {
 	}
 
 	@Override
-	public DBType getValue(TableRecord value, TypeMetadata meta,
-			Set<Object> pinnedBlocks) {
+	public DBType getValue(TableRecord value, TypeMetadata meta) {
 		throw new RuntimeException("Method not supported");
 	}
 

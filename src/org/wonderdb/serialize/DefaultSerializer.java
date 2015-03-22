@@ -7,6 +7,7 @@ import java.util.List;
 import org.jboss.netty.buffer.ChannelBuffer;
 import org.wonderdb.types.BlockPtr;
 import org.wonderdb.types.BlockPtrList;
+import org.wonderdb.types.ByteArrayType;
 import org.wonderdb.types.DBType;
 import org.wonderdb.types.DoubleType;
 import org.wonderdb.types.FloatType;
@@ -26,6 +27,7 @@ public class DefaultSerializer implements TypeSerializer {
 	public static final FloatType NULL_FLOAT = new FloatType(null);
 	public static final BlockPtr NULL_BLKPTR = new SingleBlockPtr((byte) -1, -1);
 	public static final BlockPtrList NULL_BLKPTRLIST = new BlockPtrList(null);
+	public static final ByteArrayType NULL_BYTE_ARRAY = new ByteArrayType(null);
 	
 	private DefaultSerializer() {
 	}
@@ -38,11 +40,15 @@ public class DefaultSerializer implements TypeSerializer {
 	public DBType unmarshal(int type, ChannelBuffer buffer, TypeMetadata meta) {
 		switch (type) {
 		case SerializerManager.STRING:
+		case SerializerManager.BYTE_ARRAY_TYPE:
 			int size = buffer.readInt();
 			byte[] bytes = new byte[size];
 			buffer.readBytes(bytes);
-			
-			return new StringType(new String(bytes));
+			if (type==SerializerManager.STRING) {
+				return new StringType(new String(bytes));
+			} else {
+				return new ByteArrayType(bytes);
+			}
 		case SerializerManager.INT:
 			return new IntType(buffer.readInt());
 		case SerializerManager.LONG:
@@ -77,6 +83,13 @@ public class DefaultSerializer implements TypeSerializer {
 			StringType s = (StringType) object;
 			buffer.writeInt(s.get().getBytes().length);
 			buffer.writeBytes(s.get().getBytes());
+			return;
+		}
+
+		if (object instanceof ByteArrayType) {
+			ByteArrayType s = (ByteArrayType) object;
+			buffer.writeInt(s.get().length);
+			buffer.writeBytes(s.get());
 			return;
 		}
 		
@@ -123,6 +136,11 @@ public class DefaultSerializer implements TypeSerializer {
 			String value = ((StringType) object).get();
 			return  1 + value.getBytes().length + Integer.BYTES;
 		} 
+		
+		if (object instanceof ByteArrayType) {
+			byte[] array = ((ByteArrayType) object).get();
+			return 1 + array.length + Integer.BYTES;
+		}
 
 		if (object instanceof BlockPtr) {
 			return 1+ 1 + Long.SIZE/8; 
@@ -136,6 +154,8 @@ public class DefaultSerializer implements TypeSerializer {
 		switch (type) {
 		case SerializerManager.STRING:
 			return NULL_STRING.equals(object) || object == null;
+		case SerializerManager.BYTE_ARRAY_TYPE:
+			return NULL_BYTE_ARRAY.equals(object);
 		case SerializerManager.INT:
 			return NULL_INT.equals(object) || object == null;
 		case SerializerManager.LONG:
@@ -184,6 +204,7 @@ public class DefaultSerializer implements TypeSerializer {
 		case SerializerManager.FLOAT: return Types.FLOAT;
 		case SerializerManager.INT: return Types.INTEGER;
 		case SerializerManager.LONG: return Types.NUMERIC;
+		case SerializerManager.BYTE_ARRAY_TYPE: return Types.BINARY;
 		default: return -1;
 		}
 	}

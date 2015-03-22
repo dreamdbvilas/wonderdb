@@ -168,6 +168,37 @@ public class SchemaMetadata {
 			
 			ptr = new SingleBlockPtr((byte) 0, 3*WonderDBPropertyManager.getInstance().getDefaultBlockSize());
 			indexList = WonderDBList.create("_index", ptr, 1, txnId, pinnedBlocks);
+			
+			List<ColumnNameMeta> columns = new ArrayList<>();
+			ColumnNameMeta cnm = new ColumnNameMeta();
+			cnm.setCollectioName("cache");
+			cnm.setColumnName("key");
+			cnm.setColumnType(SerializerManager.BYTE_ARRAY_TYPE);
+			cnm.setCoulmnId(0);
+			columns.add(cnm);
+			cnm = new ColumnNameMeta();
+			cnm.setCollectioName("cache");
+			cnm.setColumnName("value");
+			cnm.setColumnType(SerializerManager.BYTE_ARRAY_TYPE);
+			cnm.setCoulmnId(1);
+			columns.add(cnm);
+			
+			createNewCollection("cache", null, columns, 10);
+			
+			IndexNameMeta inm = new IndexNameMeta();
+			inm.setIndexName("cacheIndex");
+			inm.setAscending(true);
+			inm.setUnique(true);
+			inm.setCollectionName("cache");
+			List<Integer> columnIdList = new ArrayList<>();
+			columnIdList.add(0);
+			inm.setColumnIdList(columnIdList);
+			String storageFile = StorageMetadata.getInstance().getDefaultFileName();
+			createNewIndex(inm, storageFile);
+			
+		} catch (InvalidCollectionNameException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
 		} finally {
 			LogManager.getInstance().commitTxn(txnId);
 			CacheEntryPinner.getInstance().unpin(pinnedBlocks, pinnedBlocks);

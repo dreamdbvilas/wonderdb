@@ -38,6 +38,7 @@ public class SerializerManager {
 	public static final int COLLECTION_NAME_META_TYPE = 10;
 	public static final int COLUMN_NAME_META_TYPE = 11;
 	public static final int INDEX_NAME_META_TYPE = 12;
+	public static final int BYTE_ARRAY_TYPE = 13;
 	
 	private Map<Integer, TypeSerializer> map = new HashMap<>();
 	private static SerializerManager instance = new SerializerManager();
@@ -55,6 +56,7 @@ public class SerializerManager {
 		register(COLLECTION_NAME_META_TYPE, CollectionNameMetaSerializer.getInstance());
 		register(COLUMN_NAME_META_TYPE, ColumnNameMetaSerializer.getInstance());
 		register(INDEX_NAME_META_TYPE, IndexNameMetaSerializer.getInstance());
+		register(BYTE_ARRAY_TYPE, DefaultSerializer.getInstance());
 	}
 	
 	public static SerializerManager getInstance() {

@@ -49,13 +49,19 @@ import org.wonderdb.serialize.SerializerManager;
 import org.wonderdb.txnlogger.LogManager;
 import org.wonderdb.txnlogger.TransactionId;
 import org.wonderdb.types.ColumnNameMeta;
+import org.wonderdb.types.ColumnSerializerMetadata;
 import org.wonderdb.types.DBType;
+import org.wonderdb.types.ExtendedColumn;
 import org.wonderdb.types.IndexKeyType;
 import org.wonderdb.types.IndexNameMeta;
+import org.wonderdb.types.IndexRecordMetadata;
 import org.wonderdb.types.RecordId;
 import org.wonderdb.types.StringType;
+import org.wonderdb.types.TableRecordMetadata;
 import org.wonderdb.types.TypeMetadata;
 import org.wonderdb.types.record.IndexRecord;
+import org.wonderdb.types.record.RecordManager;
+import org.wonderdb.types.record.RecordManager.BlockAndRecord;
 import org.wonderdb.types.record.TableRecord;
 
 
@@ -98,35 +104,50 @@ public class TableRecordManager {
 		return retMap;
 	}
 
-	public int addTableRecord(String tableName, Map<Integer, DBType> map, Shard shard) throws InvalidCollectionNameException {
+	public int addTableRecord(String tableName, Map<Integer, DBType> map, Shard shard, boolean insertOrUpdate) throws InvalidCollectionNameException {
 		CollectionMetadata colMeta = SchemaMetadata.getInstance().getCollectionMetadata(tableName);
-
+		ViolatedKeysAndRecord ret = null;
 		if (colMeta == null) {
 			throw new RuntimeException("collection doesnt exist");
 //			SchemaMetadata.getInstance().createNewCollection(tableName, null, null, 10);
 //			colMeta = SchemaMetadata.getInstance().getCollectionMetadata(tableName);
 		}
 		
+		Map<Integer, DBType> columnMap = new HashMap<>(map);
+		TableRecord trt = new TableRecord(columnMap);
+		WonderDBList dbList = colMeta.getRecordList(shard);
 		TransactionId txnId = null;
 		if (colMeta.isLoggingEnabled()) {
 			txnId = LogManager.getInstance().startTxn();
 		}
 		
-		Map<Integer, DBType> columnMap = new HashMap<>(map);
 		
-		TableRecord trt = new TableRecord(columnMap);
 		Set<Object> pinnedBlocks = new HashSet<Object>();
 		RecordId recordId = null;
 		Set<IndexKeyType> uIndexLock = null;
 		try {
 			List<IndexNameMeta> idxMetaList = SchemaMetadata.getInstance().getIndexes(tableName);
-			uIndexLock = checkForUniqueViolations(idxMetaList, tableName, map, shard, null, pinnedBlocks);
-			if (uIndexLock == null) {
-				throw new UniqueKeyViolationException();
+			ret = checkForUniqueViolations(idxMetaList, tableName, map, shard, null, pinnedBlocks);
+			if (ret.recordId != null) {
+				if (insertOrUpdate) {
+					TableRecordMetadata meta = (TableRecordMetadata) SchemaMetadata.getInstance().getTypeMetadata(tableName);
+					BlockAndRecord bar = null;
+					bar = RecordManager.getInstance().getTableRecordAndLock(ret.recordId, new ArrayList<>(map.keySet()), meta, pinnedBlocks);
+					if (bar != null && bar.block != null && bar.record != null) {
+						recordId = ((TableRecord) bar.record).getRecordId();
+						ObjectLocker.getInstance().acquireLock(recordId);
+						updateTableRecord(tableName, (TableRecord) bar.record, new ArrayList<>(map.keySet()), new ArrayList<>(), columnMap, dbList, txnId, pinnedBlocks);
+						return 1;
+					} else {
+						return 0;
+					}
+				} else {
+					throw new UniqueKeyViolationException();
+				}
 			}
 			TypeMetadata meta = SchemaMetadata.getInstance().getTypeMetadata(tableName);
-			WonderDBList dbList = colMeta.getRecordList(shard);
 			TableRecord savedRecord = (TableRecord) dbList.add(trt, txnId, meta, pinnedBlocks);
+			
 			recordId = savedRecord.getRecordId();
 			ObjectLocker.getInstance().acquireLock(recordId);
 			
@@ -135,7 +156,7 @@ public class TableRecordManager {
 					IndexNameMeta idxMeta = idxMetaList.get(i);
 					Shard idxShard = new Shard("");
 					BTree tree = idxMeta.getIndexTree(idxShard);
-					IndexKeyType ikt = buildIndexKey(idxMeta, savedRecord);
+					IndexKeyType ikt = buildIndexKey(idxMeta, savedRecord.getColumnMap(), savedRecord.getRecordId(), pinnedBlocks);
 					try {
 						tree.insert(ikt, pinnedBlocks, txnId);
 					} catch (UniqueKeyViolationException e) {
@@ -155,6 +176,9 @@ public class TableRecordManager {
 //				}
 //			}
 		} finally {
+			if (ret != null && ret.indexSet != null) {
+				InProcessIndexQueryIndexMgr.getInstance().done(ret.indexSet);
+			}
 			LogManager.getInstance().commitTxn(txnId);
 			if (recordId != null) {
 				ObjectLocker.getInstance().releaseLock(recordId);
@@ -164,8 +188,13 @@ public class TableRecordManager {
 		}
 		return 1;
 	}
+	
+	private class ViolatedKeysAndRecord {
+		Set<IndexKeyType> indexSet = null;
+		RecordId recordId = null;
+	}
 
-	private Set<IndexKeyType> checkForUniqueViolations(List<IndexNameMeta> idxMetaList, String tableName, Map<Integer, DBType> map, 
+	private ViolatedKeysAndRecord checkForUniqueViolations(List<IndexNameMeta> idxMetaList, String tableName, Map<Integer, DBType> map, 
 			Shard tableShard, RecordId recordId, Set<Object> pinnedBlocks) {
 		Set<IndexKeyType> uniqueIndexKeys = new HashSet<IndexKeyType>();
 		
@@ -173,18 +202,21 @@ public class TableRecordManager {
 			for (int i = 0; i < idxMetaList.size(); i++) {
 				IndexNameMeta idxMeta = idxMetaList.get(i);
 				if (idxMeta.isUnique()) {
-					IndexKeyType ikt = buildIndexKeyForSelect(idxMeta, map);
+					IndexKeyType ikt = buildIndexKey(idxMeta, map, null, pinnedBlocks);
 					uniqueIndexKeys.add(ikt);
 				}
 			}
 		}
+		
+		ViolatedKeysAndRecord ret = new ViolatedKeysAndRecord();
+		ret.indexSet = uniqueIndexKeys;
 		
 		if (InProcessIndexQueryIndexMgr.getInstance().canProcess(uniqueIndexKeys)) {
 			for (int i = 0; i < idxMetaList.size(); i++) {
 				IndexNameMeta idxMeta = idxMetaList.get(i);
 				TypeMetadata meta = SchemaMetadata.getInstance().getIndexMetadata(idxMeta);
 				if (idxMeta.isUnique()) {
-					IndexKeyType ikt = buildIndexKeyForSelect(idxMeta, map);
+					IndexKeyType ikt = buildIndexKey(idxMeta, map, null, pinnedBlocks);
 					Shard shard = new Shard("");
 					BTree tree = idxMeta.getIndexTree(shard);
 					IndexCompareIndexQuery iciq = new IndexCompareIndexQuery(ikt, true, meta, pinnedBlocks);
@@ -197,8 +229,10 @@ public class TableRecordManager {
 							IndexKeyType ikt1 = (IndexKeyType) column;
 							RecordId ikt1RecId = ikt1.getRecordId();
 							if (ikt.compareTo(ikt1) == 0 && !ikt1RecId.equals(recordId)) {
-								InProcessIndexQueryIndexMgr.getInstance().done(uniqueIndexKeys);
-								return null;
+								ret.recordId = ikt1RecId;
+								return ret;
+//								InProcessIndexQueryIndexMgr.getInstance().done(uniqueIndexKeys);
+//								return null;
 							}
 						}
 					} catch (Exception e) {
@@ -211,88 +245,11 @@ public class TableRecordManager {
 				}
 			}
 		}
-		return uniqueIndexKeys;
+		return ret;
 	}
 	
-//	public int updateTableRecord(String tableName, Map<String, DBType> map, Shard shard, RecordId recordId, List<BasicExpression> expList,
-//			TransactionId txnId) throws InvalidCollectionNameException {
-//		Set<Object> pinnedBlocks = new HashSet<Object>();
-//		try {
-//			Map<Integer, DBType> ctMap = convertTypes(tableName, map);
-//			return updateTableRecord(tableName, ctMap, shard, recordId, expList, pinnedBlocks, txnId);
-//		} finally {
-//			CacheEntryPinner.getInstance().unpin(pinnedBlocks, pinnedBlocks);
-//		}
-//	}
-//	
-//	public int updateTableRecord(String tableName, String objectId, Map<Integer, DBType> map, Shard shard) {
-//		RecordId recId = getRecordIdFromObjectId(tableName, objectId, shard);
-//		Set<Object> pinnedBlocks = new HashSet<>();
-//		try {
-//			return updateTableRecord(tableName, map, shard, recId, null, pinnedBlocks, null);
-//		} catch (InvalidCollectionNameException e) {
-//			throw new RuntimeException(e);
-//		} finally {
-//			CacheEntryPinner.getInstance().unpin(pinnedBlocks, pinnedBlocks);
-//		}
-//	}
-//	
-//	private RecordId getRecordIdFromObjectId(String tableName, String objectId, Shard shard) {
-//		IndexMetadata idxMeta = SchemaMetadata.getInstance().getIndex("objectId"+tableName);
-//		Shard idxShard = new Shard(idxMeta.getSchemaId(), idxMeta.getName(), shard.getReplicaSetName());
-//		BTree tree = idxMeta.getIndexTree(idxShard);
-//		List<DBType> l = new ArrayList<DBType>();
-//		l.add(new StringType(objectId));
-//		IndexKeyType ikt = new IndexKeyType(l, null);
-//		IndexCompareIndexQuery entry = new IndexCompareIndexQuery(ikt);
-//		Set<BlockPtr> pinnedBlocks = new HashSet<BlockPtr>();
-//		ResultIterator iter = null;
-//		RecordId recId = null;
-//		try {
-//			iter = tree.find(entry, false, pinnedBlocks);
-//			if (iter.hasNext()) {
-//				ResultContent rc = iter.next();
-//				recId = rc.getRecordId();
-//			}
-//		} finally {
-//			iter.unlock();
-//			CacheEntryPinner.getInstance().unpin(pinnedBlocks, pinnedBlocks);
-//		}
-//		return recId;
-//	}
-//	private List<ColumnType> buildSelectCoulmnList(String collectionName, Map<ColumnType, DBType> changedColumns, List<BasicExpression> expList) {
-//		Set<ColumnType> selectList = new HashSet<ColumnType>();
-//		selectList.addAll(changedColumns.keySet());
-//		Iterator<DBType> values = changedColumns.values().iterator();
-//		while (values.hasNext()) {
-//			DBType dt = values.next();
-//			if (dt instanceof CollectionColumn) {
-//				selectList.add(((CollectionColumn) dt).getColumnType());
-//			}
-//		}
-//
-//		if (expList != null) {		
-//			for (int i = 0; i < expList.size(); i++) {
-//				BasicExpression exp = expList.get(i);
-//				if (exp.getLeftOperand() instanceof VariableOperand) {
-//					VariableOperand vo = (VariableOperand) exp.getLeftOperand();
-//					if (vo.getCollectionAlias() != null && vo.getCollectionAlias().getCollectionName().equals(collectionName)) {
-//						selectList.add(vo.getColumnType());
-//					}
-//				}
-//			}
-//		}
-//		
-//		List<IndexMetadata> idxList = SchemaMetadata.getInstance().getIndexes(collectionName);
-//		for (int i = 0; i < idxList.size(); i++) {
-//			IndexMetadata idxMeta = idxList.get(i);
-//			selectList.addAll(idxMeta.getIndex().getColumnNameList());
-//		}
-//		return new ArrayList<ColumnType>(selectList);
-//	}
-//	
-	public int updateTableRecord(String tableName, RecordId recordId, Shard shard, List<UpdateSetExpression> updateSetList, 
-			SimpleNode tree, Map<String, CollectionAlias> fromMap, TransactionId txnId) throws InvalidCollectionNameException {
+	public int updateTableRecord(String tableName, RecordId recordId, Shard shard, List<Integer> selectColumns, 
+			List<UpdateSetExpression> updateSetList, SimpleNode tree, Map<String, CollectionAlias> fromMap, TransactionId txnId) throws InvalidCollectionNameException {
 		// first lets delete all indexes with old value.
 //		Map<Integer, Column> columnMap = record.getColumnMap();
 //		Map<Integer, DBType> ctMap = new HashMap<>(columnMap.size());
@@ -306,7 +263,7 @@ public class TableRecordManager {
 		TableRecord record = null;
 		Set<IndexKeyType> uIndexLock = null;
 		Set<Object> pinnedBlocks = new HashSet<>();
-		
+		ViolatedKeysAndRecord ret = null;
 		CacheEntryPinner.getInstance().pin(recordId.getPtr(), pinnedBlocks);
 		CollectionAlias ca = new CollectionAlias(tableName, "");
 		DataContext context = new DataContext();
@@ -316,27 +273,39 @@ public class TableRecordManager {
 			txnId = LogManager.getInstance().startTxn();
 		}
 		WonderDBList dbList = colMeta.getRecordList(shard);
-		TypeMetadata meta = SchemaMetadata.getInstance().getTypeMetadata(tableName);
+		TableRecordMetadata meta = (TableRecordMetadata) SchemaMetadata.getInstance().getTypeMetadata(tableName);
 		try {
-			ListBlock rb = (ListBlock) BlockManager.getInstance().getBlock(recordId.getPtr(), meta, pinnedBlocks);
-			if (rb == null) {
+//			ListBlock rb = (ListBlock) BlockManager.getInstance().getBlock(recordId.getPtr(), meta, pinnedBlocks);
+//			if (rb == null) {
+//				return 0;
+//			}
+//			rb.readLock();
+//			try {
+//				record = (TableRecord) rb.getRecord(recordId.getPosn());
+//				if (record == null) {
+//					return 0;
+//				}
+//				context.add(ca, new TableResultContent(record, meta, pinnedBlocks));
+//				if (!AndQueryExecutor.filterTree(context, tree, fromMap)) {
+//					return 0;
+//				}
+//			} finally {
+//				if (rb != null) {
+//					rb.readUnlock();
+//				}
+//			}
+			
+			BlockAndRecord bar = null;
+			bar = RecordManager.getInstance().getTableRecordAndLock(recordId, selectColumns, meta, pinnedBlocks);
+			if (bar == null || bar.block == null || bar.record == null) {
 				return 0;
 			}
-			rb.readLock();
-			try {
-				record = (TableRecord) rb.getRecord(recordId.getPosn());
-				if (record == null) {
-					return 0;
-				}
-				context.add(ca, new TableResultContent(record, meta, pinnedBlocks));
-				if (!AndQueryExecutor.filterTree(context, tree, fromMap)) {
-					return 0;
-				}
-			} finally {
-				if (rb != null) {
-					rb.readUnlock();
-				}
+			record = (TableRecord) bar.record;
+			context.add(ca, new TableResultContent(record, meta));
+			if (!AndQueryExecutor.filterTree(context, tree, fromMap)) {
+				return 0;
 			}
+			
 			Map<Integer, DBType> changedValues = new HashMap<>();
 			updateChangedValues(context, updateSetList, changedValues, fromMap);
 			List<IndexNameMeta> changedIndexes = getChangedIndexes(tableName, changedValues);
@@ -348,42 +317,60 @@ public class TableRecordManager {
 			while (iter.hasNext()) {
 				int key = iter.next();
 				DBType column = columnMap.get(key);
-				if (column == null) {
-					int breakHere = 0;
-				}
 				ctMap.put(key, column);
 			}
 			Map<Integer, DBType> workingCtMap = new HashMap<>(ctMap);
 			workingCtMap.putAll(changedValues);
 			
-			uIndexLock = checkForUniqueViolations(changedIndexes, tableName, workingCtMap, shard, recordId, pinnedBlocks);
-			if (uIndexLock == null) {
+			ret = checkForUniqueViolations(changedIndexes, tableName, workingCtMap, shard, recordId, pinnedBlocks);
+			if (ret.recordId != null) {
 				return 0;
 			}
-						
-			for (int i = 0; i < changedIndexes.size(); i++) {
-				IndexNameMeta idxMeta = changedIndexes.get(i);
-				IndexKeyType ikt = buildIndexKeyForUpdate(idxMeta, record, pinnedBlocks);
-				Shard idxShard = new Shard("");
-				idxMeta.getIndexTree(idxShard).remove(ikt, pinnedBlocks, txnId);
+			updateTableRecord(tableName, record, selectColumns, changedIndexes, changedValues, dbList, txnId, pinnedBlocks);
+		} finally {
+			if (recordId != null) {
+				ObjectLocker.getInstance().releaseLock(recordId);
 			}
-			
-			TableRecord newRecord = new TableRecord(changedValues);
-			Iterator<Integer> iter1 = record.getColumnMap().keySet().iterator();
-			
-			while (iter1.hasNext()) {
-				int key = iter1.next();
-				if (changedValues.containsKey(key)) {
-					continue;
-				}
-				DBType value = record.getColumnMap().get(key);
-				changedValues.put(key, value);
+			if (ret != null && ret.indexSet != null) {
+				InProcessIndexQueryIndexMgr.getInstance().done(ret.indexSet);
 			}
+			InProcessIndexQueryIndexMgr.getInstance().done(uIndexLock);
+			CacheEntryPinner.getInstance().unpin(pinnedBlocks, pinnedBlocks);
+		}
+		return 1;
+	}
 
-			dbList.update(record, newRecord, txnId, meta, pinnedBlocks);
+	private void updateTableRecord(String tableName, TableRecord record, List<Integer> selectColumns, List<IndexNameMeta> changedIndexes, 
+			Map<Integer, DBType> changedValues, WonderDBList dbList, TransactionId txnId, Set<Object> pinnedBlocks) {
+		
+		
+		for (int i = 0; i < changedIndexes.size(); i++) {
+			IndexNameMeta idxMeta = changedIndexes.get(i);
+			IndexKeyType ikt = buildIndexKey(idxMeta, record.getColumnMap(), record.getRecordId(), pinnedBlocks);
+			Shard idxShard = new Shard("");
+			idxMeta.getIndexTree(idxShard).remove(ikt, pinnedBlocks, txnId);
+		}
+		
+		TableRecord newRecord = (TableRecord) record.copyOf();
+		Iterator<Integer> iter1 = changedValues.keySet().iterator();
+		
+		while (iter1.hasNext()) {
+			int key = iter1.next();
+			DBType newValue = changedValues.get(key);
+			DBType currentValue = newRecord.getColumnMap().get(key);
+			if (currentValue instanceof ExtendedColumn) {
+				((ExtendedColumn) currentValue).setValue(newValue);
+			} else {
+				newRecord.getColumnMap().put(key, newValue);
+			}
+		}
+		
+		TypeMetadata meta = SchemaMetadata.getInstance().getTypeMetadata(tableName);
+		dbList.update(record, newRecord, txnId, meta, pinnedBlocks);
+		if (changedIndexes != null) {
 			for (int i = 0; i < changedIndexes.size(); i++) {
 				IndexNameMeta idxMeta = changedIndexes.get(i);
-				IndexKeyType ikt = buildIndexKeyForUpdate(idxMeta, record, pinnedBlocks);
+				IndexKeyType ikt = buildIndexKey(idxMeta, newRecord.getColumnMap(), newRecord.getRecordId(), pinnedBlocks);
 				try {
 					Shard idxShard = new Shard("");
 					IndexNameMeta inm = SchemaMetadata.getInstance().getIndex(idxMeta.getIndexName());
@@ -392,27 +379,9 @@ public class TableRecordManager {
 					throw new RuntimeException("Unique Key violation: should never happen");
 				}
 			}
-			
-//			if (ClusterManagerFactory.getInstance().getClusterManager().isMaster(shard) && WonderDBPropertyManager.getInstance().isReplicationEnabled()) {
-//				Producer<String, KafkaPayload> producer = KafkaProducerManager.getInstance().getProducer(shard.getReplicaSetName());
-//				if (producer != null) {
-//					DBType dt = tr.getColumnValue(colMeta, colMeta.getColumnType("objectId"), null);
-//					String objectId = ((StringType) dt).get();
-//					KafkaPayload payload = new KafkaPayload("update", tableName, objectId, ctMap);
-//					KeyedMessage<String, KafkaPayload> message = new KeyedMessage<String, KafkaPayload>(shard.getReplicaSetName(), payload);
-//					producer.send(message);
-//				}
-//			}
-		} finally {
-			if (recordId != null) {
-				ObjectLocker.getInstance().releaseLock(recordId);
-			}
-			InProcessIndexQueryIndexMgr.getInstance().done(uIndexLock);
-			CacheEntryPinner.getInstance().unpin(pinnedBlocks, pinnedBlocks);
-		}
-		return 1;
+		}		
 	}
-
+	
 	private void updateChangedValues(DataContext context, List<UpdateSetExpression> updateSetList, Map<Integer, DBType> changedValue, Map<String, CollectionAlias> fromMap) {
 		for (int i = 0; i < updateSetList.size(); i++) {
 			UpdateSetExpression use = updateSetList.get(i);
@@ -462,7 +431,7 @@ public class TableRecordManager {
 			// now just walk through the results and remove it from all indexes.
 			deleteRecordFromIndexes(context, idxMetaList, shard, ca, pinnedBlocks, txnId);			
 			WonderDBList dbList = SchemaMetadata.getInstance().getCollectionMetadata(tableName).getRecordList(shard);
-			dbList.deleteRecord(record, txnId, meta, pinnedBlocks);
+			dbList.deleteRecord(record.getRecordId(), txnId, meta, pinnedBlocks);
 			
 //			if (ClusterManagerFactory.getInstance().getClusterManager().isMaster(shard) && WonderDBPropertyManager.getInstance().isReplicationEnabled()) {
 //				Producer<String, KafkaPayload> producer = KafkaProducerManager.getInstance().getProducer(shard.getReplicaSetName());
@@ -483,6 +452,41 @@ public class TableRecordManager {
 		}
 		
 		return 1;
+	}
+	
+	public void deleteFromCache(DBType key) {
+		if (key == null) {
+			return;
+		}
+		ObjectLocker.getInstance().acquireLock(key);
+		try {
+			List<IndexNameMeta> idxMetaList = SchemaMetadata.getInstance().getIndexes("cache");
+			IndexNameMeta inm = idxMetaList.get(0);
+			Shard shard = new Shard("");
+			Set<Object> pinnedBlocks = new HashSet<>();
+			TypeMetadata meta = SchemaMetadata.getInstance().getIndexMetadata(inm);
+			List<DBType> list = new ArrayList<>();
+			list.add(key);
+			IndexKeyType ikt = new IndexKeyType(list, null);
+			TransactionId txnId = LogManager.getInstance().startTxn();
+			BTree tree = inm.getIndexTree(shard);
+			IndexCompareIndexQuery iciq = new IndexCompareIndexQuery(ikt, true, meta, pinnedBlocks);
+			
+			ResultIterator iter = tree.find(iciq, true, pinnedBlocks);
+			while (iter.hasNext()) {
+				IndexRecord record = (IndexRecord) iter.next();
+				iter.remove();
+				int i = 0;
+			}
+			ikt = tree.remove(ikt, pinnedBlocks, txnId);
+			WonderDBList dbList = SchemaMetadata.getInstance().getCollectionMetadata("cache").getRecordList(shard);
+			if (ikt != null) {
+				dbList.deleteRecord(ikt.getRecordId(), txnId, meta, pinnedBlocks);
+			}
+		} finally {
+			ObjectLocker.getInstance().releaseLock(key);
+		}
+		
 	}
 	
 //	public int delete (String collectionName, String objectId, Shard shard) {
@@ -548,30 +552,41 @@ public class TableRecordManager {
 		return retList;
 	}
 
-	private IndexKeyType buildIndexKey(IndexNameMeta idxMeta, TableRecord record) {
+	private IndexKeyType buildIndexKey(IndexNameMeta idxMeta, Map<Integer, DBType> columnMap, RecordId recordId, Set<Object> pinnedBlocks) {
 		List<Integer> idxColList = idxMeta.getColumnIdList();
+		IndexRecordMetadata meta = (IndexRecordMetadata) SchemaMetadata.getInstance().getIndexMetadata(idxMeta);
 		List<DBType> idxCols = new ArrayList<>();
 		for (int i = 0; i < idxColList.size(); i++) {
 			int colId = idxColList.get(i);
-			DBType column = record.getColumnMap().get(colId);
+			DBType column = columnMap.get(colId);
 			DBType dt = column;
+			if (column instanceof ExtendedColumn) {
+				int type = meta.getTypeList().get(i);
+				dt = ((ExtendedColumn)  column).getValue(new ColumnSerializerMetadata(type));
+			}
 			idxCols.add(dt);
 		}
 		
-		return new IndexKeyType(idxCols, record.getRecordId());
+		return new IndexKeyType(idxCols, recordId);
 	}
 	
-	private IndexKeyType buildIndexKeyForUpdate(IndexNameMeta idxMeta, TableRecord record, Set<Object> pinnedBlocks) {
-		List<Integer> idxColList = idxMeta.getColumnIdList();
-		List<DBType> idxCols = new ArrayList<>();
-		
-		for (int i = 0; i < idxColList.size(); i++) {
-			Integer colId = idxColList.get(i);
-			DBType column = record.getColumnMap().get(colId);
-			idxCols.add(column);
-		}
-		return new IndexKeyType(idxCols, record.getRecordId());
-	}
+//	private IndexKeyType buildIndexKeyForUpdate(IndexNameMeta idxMeta, TableRecord record, Set<Object> pinnedBlocks) {
+//		List<Integer> idxColList = idxMeta.getColumnIdList();
+//		List<DBType> idxCols = new ArrayList<>();
+//		IndexRecordMetadata meta = (IndexRecordMetadata) SchemaMetadata.getInstance().getIndexMetadata(idxMeta);
+//		
+//		for (int i = 0; i < idxColList.size(); i++) {
+//			Integer colId = idxColList.get(i);
+//			DBType column = record.getColumnMap().get(colId);
+//			
+//			if (column instanceof ExtendedColumn) {
+//				int type = meta.getTypeList().get(i);
+//				column = ((ExtendedColumn) column).getValue(new ColumnSerializerMetadata(type), pinnedBlocks);
+//			}
+//			idxCols.add(column);
+//		}
+//		return new IndexKeyType(idxCols, record.getRecordId());
+//	}
 	
 //	private IndexKeyType buildIndexKeyForUpdate(IndexMetadata idxMeta, DataContext context, CollectionAlias ca, Set<BlockPtr> pinnedBlocks) {
 //		List<CollectionColumn> idxColList = idxMeta.getIndex().getColumnList();
@@ -597,15 +612,21 @@ public class TableRecordManager {
 		return new IndexKeyType(idxCols, context.get(ca));
 	}
 	
-	private IndexKeyType buildIndexKeyForSelect(IndexNameMeta idxMeta, Map<Integer, DBType> columns) {
-		List<Integer> idxColList = idxMeta.getColumnIdList();
-		List<DBType> idxCols = new ArrayList<DBType>();
-		
-		for (int i = 0; i < idxColList.size(); i++) {
-			int colId = idxColList.get(i);
-			idxCols.add(columns.get(colId));
-		}
-		
-		return new IndexKeyType(idxCols, null);
-	}
+//	private IndexKeyType buildIndexKeyForSelect(IndexNameMeta idxMeta, Map<Integer, DBType> columns, Set<Object> pinnedBlocks) {
+//		List<Integer> idxColList = idxMeta.getColumnIdList();
+//		List<DBType> idxCols = new ArrayList<DBType>();
+//		IndexRecordMetadata meta = (IndexRecordMetadata) SchemaMetadata.getInstance().getIndexMetadata(idxMeta);
+//		
+//		for (int i = 0; i < idxColList.size(); i++) {
+//			int colId = idxColList.get(i);
+//			DBType column = columns.get(colId);
+//			if (column instanceof ExtendedColumn) {
+//				int type = meta.getTypeList().get(colId);
+//				column = ((ExtendedColumn) column).getValue(new ColumnSerializerMetadata(type), pinnedBlocks);
+//			}
+//			idxCols.add(column);
+//		}
+//		
+//		return new IndexKeyType(idxCols, null);
+//	}
 }

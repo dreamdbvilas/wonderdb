@@ -17,7 +17,9 @@ package org.wonderdb.block;
  *******************************************************************************/
 
 import java.util.Set;
+import java.util.Stack;
 
+import org.wonderdb.types.BlockPtr;
 import org.wonderdb.types.DBType;
 import org.wonderdb.types.TypeMetadata;
 
@@ -26,5 +28,5 @@ public interface IndexBlock extends Block {
 	DBType getMaxKey(TypeMetadata meta);
 	void setMaxKey(DBType key);
 	
-	BlockEntryPosition find(IndexQuery entry, boolean writeLock, Set<Object> pinnedBlocks);
+	BlockEntryPosition find(IndexQuery entry, boolean writeLock, Set<Object> pinnedBlocks, Stack<BlockPtr> blockSTack);
 }

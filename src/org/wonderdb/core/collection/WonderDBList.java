@@ -23,8 +23,6 @@ import org.wonderdb.block.ListBlock;
 import org.wonderdb.cache.impl.CacheEntryPinner;
 import org.wonderdb.cache.impl.CacheHandler;
 import org.wonderdb.cache.impl.PrimaryCacheHandlerFactory;
-import org.wonderdb.cache.impl.PrimaryCacheResourceProvider;
-import org.wonderdb.cache.impl.PrimaryCacheResourceProviderFactory;
 import org.wonderdb.cache.impl.SecondaryCacheHandlerFactory;
 import org.wonderdb.cache.impl.SecondaryCacheResourceProvider;
 import org.wonderdb.cache.impl.SecondaryCacheResourceProviderFactory;
@@ -59,7 +57,7 @@ public class WonderDBList {
 	CacheHandler<BlockPtr, ChannelBuffer> secondaryCacheHandler = SecondaryCacheHandlerFactory.getInstance().getCacheHandler();
 	CacheHandler<BlockPtr, List<Record>> primaryCacheHandler = PrimaryCacheHandlerFactory.getInstance().getCacheHandler();
 	SecondaryCacheResourceProvider secondaryResourceProvider = SecondaryCacheResourceProviderFactory.getInstance().getResourceProvider();
-	PrimaryCacheResourceProvider primaryResourceProvider = PrimaryCacheResourceProviderFactory.getInstance().getResourceProvider();
+//	PrimaryCacheResourceProvider primaryResourceProvider = PrimaryCacheResourceProviderFactory.getInstance().getResourceProvider();
 	
 	private static ThreadPoolExecutorWrapper threadPoolExecutor = new ThreadPoolExecutorWrapper(1, 1, 10, 100, "list");
 
@@ -147,12 +145,11 @@ public class WonderDBList {
 			block.getData().add(blockableRecord);
 
 			serializeRecord(blockableRecord, changedColumnIds, pinnedBlocks, id, meta);
+			block.adjustResourceCount(blockableRecord.getResourceCount());
 		} finally {
 			block.writeUnlock();
 			tailExtender.returnBlock(block.getPtr());
 		}
-		int consumedResoures = RecordUtils.getInstance().getConsumedResources(record);
-		primaryResourceProvider.getResource(block.getPtr(), consumedResoures);
 		return blockableRecord;
 	}
 	
@@ -162,7 +159,7 @@ public class WonderDBList {
 		int recordOldSize = RecordSerializer.getInstance().getRecordSize(oldRecord, meta);
 		
 		List<Integer> changedColumnIds = null;
-		int consumedResources = RecordUtils.getInstance().getConsumedResources(oldRecord);
+//		int consumedResources = RecordUtils.getInstance().getConsumedResources(oldRecord);
 		block.writeLock();
 		try {
 			if (oldRecord instanceof ObjectListRecord) {
@@ -179,25 +176,29 @@ public class WonderDBList {
 			}
 			block.getData().set(posn, oldRecord);
 			
-			int newConsumedResources = RecordUtils.getInstance().getConsumedResources(oldRecord);
-			primaryResourceProvider.getResource(block.getPtr(), newConsumedResources-consumedResources);
+//			int newConsumedResources = RecordUtils.getInstance().getConsumedResources(oldRecord);
+//			primaryResourceProvider.getResource(block.getPtr(), newConsumedResources-consumedResources);
 			if (oldRecord instanceof TableRecord) {
 				changedColumnIds = new ArrayList<>(((TableRecord) oldRecord).getColumnMap().keySet());
 			}
 			serializeRecord(oldRecord, changedColumnIds, pinnedBlocks, txnId, meta);
+			block.adjustResourceCount(newRecord.getResourceCount() - oldRecord.getResourceCount());
 		} finally {
 			block.writeUnlock();
 		}
 	}
 	
-	public void deleteRecord(ListRecord record, TransactionId txnId, TypeMetadata meta, Set<Object> pinnedBlocks) {
-		BlockPtr ptr = record.getRecordId().getPtr();
+	public void deleteRecord(RecordId recordId, TransactionId txnId, TypeMetadata meta, Set<Object> pinnedBlocks) {
+		BlockPtr ptr = recordId.getPtr();
 		ListBlock block = (ListBlock) BlockManager.getInstance().getBlock(ptr, meta, pinnedBlocks);
 		block.writeLock();
 		try {
+			ListRecord record = new ObjectListRecord(null);
+			record.setRecordId(recordId);
 			int p = Collections.binarySearch(block.getData(), record, new RecordComparator());
 			if (p >= 0) {
-				block.getData().remove(p);
+				Record r = block.getData().remove(p);
+				block.adjustResourceCount(-1*r.getResourceCount());
 				RecordUtils.getInstance().releaseRecord(record);
 				BlockSerilizer.getInstance().serialize(block, meta, txnId);
 			}

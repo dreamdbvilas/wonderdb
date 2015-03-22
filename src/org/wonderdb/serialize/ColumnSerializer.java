@@ -1,10 +1,12 @@
 package org.wonderdb.serialize;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
 import org.jboss.netty.buffer.ChannelBuffer;
+import org.wonderdb.cache.impl.CacheEntryPinner;
 import org.wonderdb.helper.LazyExtendedSpaceProvider;
 import org.wonderdb.types.BlockPtr;
 import org.wonderdb.types.ColumnHeader;
@@ -52,22 +54,27 @@ public class ColumnSerializer {
 		return retVal;
 	}
 	
-	public void readFull(DBType column, TypeMetadata meta, Set<Object> pinnedBlocks) {
+	public void readFull(DBType column, TypeMetadata meta) {
 		ChannelBuffer buf = null;
-		if (column instanceof Extended) {
-			buf = LazyExtendedSpaceProvider.getInstance().provideSpaceToRead(((Extended) column).getPtrList(), pinnedBlocks);
-		} else {
-			throw new RuntimeException("readFull should not be required for non extended columns");
+		Set<Object> pinnedBlocks = new HashSet<>();
+		try {
+			if (column instanceof Extended) {
+				buf = LazyExtendedSpaceProvider.getInstance().provideSpaceToRead(((Extended) column).getPtrList(), pinnedBlocks);
+			} else {
+				throw new RuntimeException("readFull should not be required for non extended columns");
+			}
+			
+			int type = -1;
+			if (meta instanceof ColumnSerializerMetadata){
+				type = ((ColumnSerializerMetadata) meta).getColumnId();
+			} else if (meta instanceof IndexRecordMetadata) {
+				type = SerializerManager.INDEX_TYPE;
+			}
+			DBType dt = Serializer.getInstance().getObject(type, buf, meta);
+			((ExtendedColumn) column).setValue(dt);
+		} finally {
+			CacheEntryPinner.getInstance().unpin(pinnedBlocks, pinnedBlocks);
 		}
-		
-		int type = -1;
-		if (meta instanceof ColumnSerializerMetadata){
-			type = ((ColumnSerializerMetadata) meta).getColumnId();
-		} else if (meta instanceof IndexRecordMetadata) {
-			type = SerializerManager.INDEX_TYPE;
-		}
-		DBType dt = Serializer.getInstance().getObject(type, buf, meta);
-		((ExtendedColumn) column).setValue(dt);
 	}
 	
 	public void serializeExtended(byte fileId, ExtendedColumn column, int blockSize, TypeMetadata meta, Set<Object> pinnedBlocks) {
@@ -77,16 +84,16 @@ public class ColumnSerializer {
 		} else if (meta instanceof IndexRecordMetadata) {
 			type = SerializerManager.INDEX_TYPE;
 		}
-		int size = 1+ Serializer.getInstance().getObjectSize(type, column.getValue(), meta);
+		int size = 1+ Serializer.getInstance().getObjectSize(type, column.getValue(meta), meta);
 		int blocksRequired = getExtraBlocksRequired(size, blockSize);
 		List<BlockPtr> list = column instanceof ExtendedColumn ? ((ExtendedColumn) column).getPtrList() : new ArrayList<>();
 		ChannelBuffer buf = LazyExtendedSpaceProvider.getInstance().provideSpaceToWrite(fileId, list, blocksRequired, pinnedBlocks);
 		ColumnHeader header = new ColumnHeader();
-		if (column.getValue() == NullType.getInstance()) {
+		if (column.getValue(meta) == NullType.getInstance()) {
 			header.setNull(true);
 		}
-		ColumnHeaderSerializer.getInstance().serialize(header, buf);
-		Serializer.getInstance().serialize(type, column.getValue(), buf, meta);
+//		ColumnHeaderSerializer.getInstance().serialize(header, buf);
+		Serializer.getInstance().serialize(type, column.getValue(meta), buf, meta);
 	}
 	
 	public void serializeMinimum(DBType column, ChannelBuffer buffer, TypeMetadata meta) {

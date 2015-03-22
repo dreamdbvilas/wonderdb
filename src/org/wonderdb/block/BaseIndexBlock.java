@@ -20,11 +20,13 @@ import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.Stack;
 
 import org.apache.log4j.Logger;
 import org.wonderdb.cache.impl.CacheEntryPinner;
 import org.wonderdb.types.BlockPtr;
 import org.wonderdb.types.DBType;
+import org.wonderdb.types.ExtendedColumn;
 import org.wonderdb.types.IndexKeyType;
 import org.wonderdb.types.TypeMetadata;
 import org.wonderdb.types.record.ObjectRecord;
@@ -41,7 +43,8 @@ public abstract class BaseIndexBlock extends BaseBlock
 		super(ptr);
 	}
 	
-	public int findPosn(IndexQuery entry, boolean writeLock, Set<Object> pinnedBlocks) {
+	public int findPosn(IndexQuery entry, boolean writeLock, Set<Object> pinnedBlocks, Stack<BlockPtr> callBlockStack) {
+		callBlockStack.push(this.getPtr());
 		int mid = Collections.binarySearch(getData(), entry, entry.getComparator());
 		if (mid < 0) {
 			mid = Math.abs(mid) -1;
@@ -70,6 +73,8 @@ public abstract class BaseIndexBlock extends BaseBlock
 								maxKey = block.getMaxKey(meta);
 							} else if (value instanceof IndexKeyType) {
 								maxKey = value;
+							} else if (value instanceof ExtendedColumn) {
+								maxKey = ((ExtendedColumn) value).getValue(meta);
 							} else {
 								throw new RuntimeException("unexpected type received");							
 							}

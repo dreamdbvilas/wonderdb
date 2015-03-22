@@ -19,13 +19,12 @@ package org.wonderdb.collection;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
-import java.util.Set;
 
-import org.wonderdb.serialize.ColumnSerializer;
+import org.wonderdb.types.ColumnSerializerMetadata;
 import org.wonderdb.types.DBType;
-import org.wonderdb.types.Extended;
 import org.wonderdb.types.ExtendedColumn;
 import org.wonderdb.types.RecordId;
+import org.wonderdb.types.TableRecordMetadata;
 import org.wonderdb.types.TypeMetadata;
 import org.wonderdb.types.record.TableRecord;
 
@@ -33,14 +32,12 @@ import org.wonderdb.types.record.TableRecord;
 
 public class TableResultContent extends TableRecord implements ResultContent {
 	private TableRecord record = null;
-	private TypeMetadata meta = null;
-	private Set<Object> pinnedBlocks = null;
+	private TableRecordMetadata meta = null;
 	
-	public TableResultContent(TableRecord record, TypeMetadata meta, Set<Object> pinnedBlocks) {	
+	public TableResultContent(TableRecord record, TypeMetadata meta) {	
 		super(record.getColumnMap());
 		this.record = record;
-		this.meta = meta;
-		this.pinnedBlocks = pinnedBlocks;
+		this.meta = (TableRecordMetadata) meta;
 	}
 	
 	@Override
@@ -53,11 +50,12 @@ public class TableResultContent extends TableRecord implements ResultContent {
 		if (column == null) {
 			return null;
 		}
+		DBType retVal = null;
 		
-		if (column instanceof Extended && ((ExtendedColumn)column).getValue() == null) {
-			ColumnSerializer.getInstance().readFull(column, meta, pinnedBlocks);
-			record.getColumnMap().put(ct, column);
-			return ((ExtendedColumn) column).getValue();
+		if (column instanceof ExtendedColumn) {
+			int type = meta.getColumnIdTypeMap().get(ct);
+			retVal = ((ExtendedColumn) column).getValue(new ColumnSerializerMetadata(type));
+			return retVal;
 		}
 		return column;
 	}

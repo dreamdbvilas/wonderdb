@@ -34,7 +34,6 @@ import org.wonderdb.query.parser.jtree.DBSelectQueryJTree;
 import org.wonderdb.schema.CollectionMetadata;
 import org.wonderdb.schema.SchemaMetadata;
 import org.wonderdb.types.ColumnNameMeta;
-import org.wonderdb.types.DBType;
 import org.wonderdb.types.RecordId;
 
 

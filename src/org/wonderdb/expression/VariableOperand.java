@@ -17,7 +17,6 @@ package org.wonderdb.expression;
  *******************************************************************************/
 
 import java.util.List;
-import java.util.Set;
 
 import org.wonderdb.collection.TableResultContent;
 import org.wonderdb.query.parse.CollectionAlias;
@@ -74,8 +73,8 @@ public class VariableOperand implements Operand {
 	}
 	
 	@Override
-	public DBType getValue(TableRecord trt, TypeMetadata meta, Set<Object> pinnedBlocks) {
-		TableResultContent trc = new TableResultContent(trt, meta, pinnedBlocks);
+	public DBType getValue(TableRecord trt, TypeMetadata meta) {
+		TableResultContent trc = new TableResultContent(trt, meta);
 		return trc.getValue(columnId);
 	}
 	

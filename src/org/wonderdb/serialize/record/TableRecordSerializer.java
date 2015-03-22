@@ -3,12 +3,14 @@ package org.wonderdb.serialize.record;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
 import org.jboss.netty.buffer.ChannelBuffer;
+import org.wonderdb.cache.impl.CacheEntryPinner;
 import org.wonderdb.helper.LazyExtendedSpaceProvider;
 import org.wonderdb.serialize.ColumnSerializer;
 import org.wonderdb.serialize.Serializer;
@@ -66,17 +68,21 @@ public class TableRecordSerializer  {
 		record.setColumnMap(map);
 	}
 	
-	public void readFull(TableRecord record, TypeMetadata meta, Set<Object> pinnedBlocks) {
+	public void readFull(TableRecord record, TypeMetadata meta) {
 		
 		ChannelBuffer buf = null;
-		
-		if (record instanceof Extended) {
-			buf = LazyExtendedSpaceProvider.getInstance().provideSpaceToRead(((Extended) record).getPtrList(), pinnedBlocks);
-		} else {
-			throw new RuntimeException("readFull is not required for non extended columns");
+		Set<Object> pinnedBlocks = new HashSet<>();
+		try {
+			if (record instanceof Extended) {
+				buf = LazyExtendedSpaceProvider.getInstance().provideSpaceToRead(((Extended) record).getPtrList(), pinnedBlocks);
+			} else {
+				throw new RuntimeException("readFull is not required for non extended columns");
+			}
+	
+			readMinimumColumns(record, buf, meta);
+		} finally {
+			CacheEntryPinner.getInstance().unpin(pinnedBlocks, pinnedBlocks);
 		}
-
-		readMinimumColumns(record, buf, meta);
 	}
 	
 	public int getFullSize(TableRecord record, TypeMetadata meta) {

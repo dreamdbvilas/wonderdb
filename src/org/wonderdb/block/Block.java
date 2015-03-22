@@ -37,4 +37,7 @@ public interface Block extends Cacheable<BlockPtr, List<Record>> {
 	void readUnlock();
 	
 	void setData(List<Record> records);
+
+	int getResourceCount();
+	void adjustResourceCount(int count);
 }

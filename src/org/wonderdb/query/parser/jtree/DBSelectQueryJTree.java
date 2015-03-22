@@ -25,8 +25,6 @@ import java.util.Map;
 import java.util.Set;
 
 import org.jboss.netty.buffer.ChannelBuffer;
-import org.wonderdb.block.BlockManager;
-import org.wonderdb.block.ListBlock;
 import org.wonderdb.cache.impl.CacheEntryPinner;
 import org.wonderdb.cluster.Shard;
 import org.wonderdb.collection.StaticTableResultContent;
@@ -47,12 +45,12 @@ import org.wonderdb.query.plan.QueryPlanBuilder;
 import org.wonderdb.schema.CollectionMetadata;
 import org.wonderdb.schema.SchemaMetadata;
 import org.wonderdb.schema.WonderDBFunction;
-import org.wonderdb.serialize.record.RecordSerializer;
 import org.wonderdb.types.ColumnNameMeta;
 import org.wonderdb.types.DBType;
-import org.wonderdb.types.Extended;
 import org.wonderdb.types.RecordId;
-import org.wonderdb.types.TypeMetadata;
+import org.wonderdb.types.TableRecordMetadata;
+import org.wonderdb.types.record.RecordManager;
+import org.wonderdb.types.record.RecordManager.BlockAndRecord;
 import org.wonderdb.types.record.TableRecord;
 
 
@@ -152,27 +150,19 @@ public class DBSelectQueryJTree extends BaseDBQuery {
 				while (iter.hasNext()) {
 					CollectionAlias ca = iter.next();
 					RecordId recId = map.get(ca);
-					TypeMetadata meta = SchemaMetadata.getInstance().getTypeMetadata(ca.getCollectionName());
-					ListBlock rb = (ListBlock) BlockManager.getInstance().getBlock(recId.getPtr(), meta, pinnedBlocks);
-					rb.readLock();
+					TableRecordMetadata meta = (TableRecordMetadata) SchemaMetadata.getInstance().getTypeMetadata(ca.getCollectionName());
+					List<Integer> selectCols = selectColumnNames.get(ca);
+					BlockAndRecord bar = null;
 					try {
-						List<Integer> selectCols = selectColumnNames.get(ca);
-						if (selectCols == null) {
-							selectCols = new ArrayList<Integer>();
+						bar = RecordManager.getInstance().getTableRecordAndLock(recId, selectCols, meta, pinnedBlocks);
+						if (bar == null || bar.block == null || bar.record == null) {
+							continue;
 						}
-						TableRecord record = (TableRecord) rb.getRecord(recId.getPosn());
-						if (record.getColumnMap().size() == 0) {
-							if (record instanceof Extended) {
-								RecordSerializer.getInstance().readFull(record, meta, pinnedBlocks);
-							}
-						}
-						record.loadExtendedColumns(selectCols, meta, pinnedBlocks);
-						Map<Integer, DBType> m = record.getColumnMap();
-						TableRecord tr = new TableRecord(m);
-						dc.add(ca, new StaticTableResultContent(tr));
+						dc.add(ca, new StaticTableResultContent((TableRecord) bar.record)); 
 					} finally {
-						rb.readUnlock();
-						CacheEntryPinner.getInstance().unpin(pinnedBlocks, pinnedBlocks);
+						if (bar != null && bar.block != null) {
+							CacheEntryPinner.getInstance().unpin(pinnedBlocks, pinnedBlocks);
+						}
 					}
 				}
 
@@ -210,38 +200,33 @@ public class DBSelectQueryJTree extends BaseDBQuery {
 
 	
 	public List<Map<CollectionAlias, TableRecord>> executeAndGetTableRecord(Shard shard) {
+		
 		List<Map<CollectionAlias, TableRecord>> retList = new ArrayList<Map<CollectionAlias,TableRecord>>();
-		List<Map<CollectionAlias, RecordId>> resultList = new ArrayList<Map<CollectionAlias,RecordId>>();
+//		List<Map<CollectionAlias, RecordId>> resultList = new ArrayList<Map<CollectionAlias,RecordId>>();
 		List<QueryPlan> planList = QueryPlanBuilder.getInstance().build(new ArrayList<>(fromMap.values()), shard, andExp, pinnedBlocks);
 		List<Map<CollectionAlias, RecordId>> mapList = new ArrayList<Map<CollectionAlias,RecordId>>();
 		AndQueryExecutor.getInstance().executeTree(shard, planList, selectStmt.get(0), false, new ArrayList<>(fromMap.values()), fromMap, selectColumnNames, mapList, null, true);
 
 		CacheEntryPinner.getInstance().unpin(pinnedBlocks, pinnedBlocks);
 
-		for (Map<CollectionAlias, RecordId> map : resultList) {
+		for (Map<CollectionAlias, RecordId> map : mapList) {
 			for (CollectionAlias ca : map.keySet()) {
 				Map<CollectionAlias, TableRecord> m1 = new HashMap<CollectionAlias, TableRecord>();
 				retList.add(m1);
-				TypeMetadata meta = SchemaMetadata.getInstance().getTypeMetadata(ca.getCollectionName());
+				TableRecordMetadata meta = (TableRecordMetadata) SchemaMetadata.getInstance().getTypeMetadata(ca.getCollectionName());
 				RecordId recId = map.get(ca);
-				ListBlock rb = (ListBlock) BlockManager.getInstance().getBlock(recId.getPtr(), meta, pinnedBlocks);
+				List<Integer> selectCols = selectColumnNames.get(ca);
+				
+				BlockAndRecord bar = null;
 				try {
-					rb.readLock();
-					TableRecord record = (TableRecord) rb.getRecord(recId.getPosn());
-					List<Integer> selectCols = selectColumnNames.get(ca);
-					if (selectCols == null) {
-						selectCols = new ArrayList<Integer>();
+					bar = RecordManager.getInstance().getTableRecordAndLock(recId, selectCols, meta, pinnedBlocks);
+					if (bar == null || bar.block == null || bar.record == null) {
+						continue;
 					}
-					if (record instanceof Extended && record.getColumnMap().size() == 0) {
-						RecordSerializer.getInstance().readFull(record, meta, pinnedBlocks);
-					}
-					record.loadExtendedColumns(selectCols, meta, pinnedBlocks);
-					record.setRecordId(recId);
-					m1.put(ca, record);
+					m1.put(ca, (TableRecord) bar.record);
 				} finally {
-					rb.readUnlock();
+					CacheEntryPinner.getInstance().unpin(pinnedBlocks, pinnedBlocks);
 				}
-				CacheEntryPinner.getInstance().unpin(pinnedBlocks, pinnedBlocks);
 			}
 		}
 		return retList;

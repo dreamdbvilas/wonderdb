@@ -21,6 +21,7 @@ import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import org.wonderdb.block.IndexQuery;
 import org.wonderdb.collection.IndexResultContent;
@@ -44,13 +45,15 @@ public  class ExpressionFilterIndexQuery implements IndexQuery, Comparator<DBTyp
 	IndexNameMeta idx;
 	CollectionAlias ca;
 	Map<Integer, List<BasicExpression>> expByIdxColumns = null;
+	Set<Object> pinnedBlocks = null;
 	
-	public ExpressionFilterIndexQuery(List<BasicExpression> expList, DataContext context, IndexNameMeta idx, CollectionAlias ca) {
+	public ExpressionFilterIndexQuery(List<BasicExpression> expList, DataContext context, IndexNameMeta idx, CollectionAlias ca, Set<Object> pinnedBlocks) {
 		this.expList = expList;
 		this.context = context;
 		this.idx = idx;
 		this.ca = ca;
 		expByIdxColumns = separateByIndexColumn();
+		this.pinnedBlocks = pinnedBlocks;
 	}
 	
 	private Map<Integer, List<BasicExpression>> separateByIndexColumn() {
@@ -124,7 +127,7 @@ public  class ExpressionFilterIndexQuery implements IndexQuery, Comparator<DBTyp
 		}
 //		IndexQueryObject iqo = new IndexQueryObject(idx, key);
 		TypeMetadata meta = SchemaMetadata.getInstance().getIndexMetadata(idx);
-		context.add(ca, new IndexResultContent(key, meta));
+		context.add(ca, new IndexResultContent(key, meta, pinnedBlocks));
 		
 		Iterator<Integer> iter = idx.getColumnIdList().iterator();
 		while (iter.hasNext()) {

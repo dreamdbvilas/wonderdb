@@ -60,7 +60,7 @@ public class WonderDBCacheService {
 	static CacheLock cacheLock = new CacheLock();
 	static CacheBean secondaryCacheBean = new CacheBean();
 	static CacheState secondaryCacheState = new CacheState();
-	static MemoryCacheMap<BlockPtr, ChannelBuffer> secondaryCacheMap = new MemoryCacheMap<>(1500, 5, true);
+	static MemoryCacheMap<BlockPtr, ChannelBuffer> secondaryCacheMap = new MemoryCacheMap<>(5000, 5, true);
 	static CacheHandler<BlockPtr, List<Record>> primaryCacheHandler = null;
 	static CacheHandler<BlockPtr, ChannelBuffer> secondaryCacheHandler = null;
 	public static CacheWriter<BlockPtr, ChannelBuffer> writer = null;
@@ -74,21 +74,22 @@ public class WonderDBCacheService {
 		PrimaryCacheResourceProvider primaryProvider = new PrimaryCacheResourceProvider(primaryCacheBean, primaryCacheState, cacheLock);
 		PrimaryCacheResourceProviderFactory.getInstance().setResourceProvider(primaryProvider);
 		primaryCacheHandler = new BaseCacheHandler<BlockPtr, List<Record>>(primaryCacheMap, primaryCacheBean, primaryCacheState, 
-				cacheLock, primaryProvider, null);
+				cacheLock, primaryProvider, false);
 		PrimaryCacheHandlerFactory.getInstance().setCacheHandler(primaryCacheHandler);
 		
+		writer = new CacheWriter<>(secondaryCacheMap, 1000, new FileCacheWriter());
+		writer.start();
+
 		secondaryCacheBean.setCleanupHighWaterMark(WonderDBPropertyManager.getInstance().getSecondaryCacheHighWatermark()); // 1475
 		secondaryCacheBean.setCleanupLowWaterMark(WonderDBPropertyManager.getInstance().getSecondaryCacheLowWatermark()); // 1450
 		secondaryCacheBean.setMaxSize(WonderDBPropertyManager.getInstance().getSecondaryCacheMaxSize()); // 1500
 		CacheLock secondaryCacheLock = new CacheLock();
 		SecondaryCacheResourceProvider secondaryProvider = new SecondaryCacheResourceProvider(null, secondaryCacheBean, secondaryCacheState, 
-				secondaryCacheLock, 10000, WonderDBPropertyManager.getInstance().getDefaultBlockSize());
+				secondaryCacheLock, WonderDBPropertyManager.getInstance().getSecondaryCacheMaxSize(), WonderDBPropertyManager.getInstance().getDefaultBlockSize(), writer);
 		SecondaryCacheResourceProviderFactory.getInstance().setResourceProvider(secondaryProvider);
 		secondaryCacheHandler = new BaseCacheHandler<BlockPtr, ChannelBuffer>(secondaryCacheMap, 
-				secondaryCacheBean, secondaryCacheState, secondaryCacheLock, secondaryProvider, null);
+				secondaryCacheBean, secondaryCacheState, secondaryCacheLock, secondaryProvider, true);
 		SecondaryCacheHandlerFactory.getInstance().setCacheHandler(secondaryCacheHandler);
-		writer = new CacheWriter<>(secondaryCacheMap, 30000, new FileCacheWriter());
-		writer.start();
 
 		MBeanServer beanServer = ManagementFactory.getPlatformMBeanServer();
 		ObjectName name = new ObjectName("PrimaryCacheState:type=CacheUsage");

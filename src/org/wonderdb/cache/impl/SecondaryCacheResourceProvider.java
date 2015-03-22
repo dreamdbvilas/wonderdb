@@ -36,8 +36,8 @@ public class SecondaryCacheResourceProvider implements CacheResourceProvider<Blo
 	private CacheWriter<BlockPtr, ChannelBuffer> cacheWriter = null;
 	
 	public SecondaryCacheResourceProvider(CacheWriter<BlockPtr, ChannelBuffer> cacheWrtier, CacheBean cacheBean, 
-			CacheState cacheState, CacheLock cacheLock, int bufferCount, int bufferSize) {
-		this.cacheWriter = cacheWrtier;
+			CacheState cacheState, CacheLock cacheLock, int bufferCount, int bufferSize, CacheWriter<BlockPtr, ChannelBuffer> writer) {
+		this.cacheWriter = writer;
 		this.cacheBean = cacheBean;
 		this.cacheState = cacheState;
 		this.cacheLock = cacheLock;
@@ -64,11 +64,12 @@ public class SecondaryCacheResourceProvider implements CacheResourceProvider<Blo
 			}
 			cacheState.updateTotalCountBy(1);
 			buffer.clear();
+			buffer.writerIndex(buffer.capacity());
 			bufferList[i] = buffer;
 		}
 		
 		if (cacheState.getTotalCount() >= cacheBean.getCleanupHighWaterMark()) {
-			cacheWriter.forceStartWriting();
+//			cacheWriter.forceStartWriting();
 			cacheLock.notifyEagerCleanup();
 		}
 		
@@ -76,7 +77,9 @@ public class SecondaryCacheResourceProvider implements CacheResourceProvider<Blo
 			cacheLock.notifyStartCleanup();
 		}
 		
-		return new SerializedBlockImpl(ptr, bufferList);
+		SerializedBlockImpl buf = new SerializedBlockImpl(ptr, bufferList);
+		buf.getFull().clear();
+		return buf;
 	}
 	
 	public ChannelBuffer[] getBuffers(ChannelBuffer buffer) {
@@ -97,7 +100,7 @@ public class SecondaryCacheResourceProvider implements CacheResourceProvider<Blo
 		}
 		Cacheable<BlockPtr, ChannelBuffer> block = ref;
 		
-		ChannelBuffer[] buffers = getBuffers(block.getData());
+		ChannelBuffer[] buffers = getBuffers(block.getFull());
 		for (int i = 0; i < buffers.length; i++) {
 			ChannelBuffer buffer = buffers[i];
 			buffer.clear();

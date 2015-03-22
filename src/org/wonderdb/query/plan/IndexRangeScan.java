@@ -41,6 +41,7 @@ import org.wonderdb.query.parse.CollectionAlias;
 import org.wonderdb.query.parse.StaticOperand;
 import org.wonderdb.schema.SchemaMetadata;
 import org.wonderdb.types.DBType;
+import org.wonderdb.types.ExtendedColumn;
 import org.wonderdb.types.IndexKeyType;
 import org.wonderdb.types.IndexNameMeta;
 import org.wonderdb.types.RecordId;
@@ -174,7 +175,7 @@ public class IndexRangeScan implements QueryPlan {
 					if (((VariableOperand) left).getCollectionAlias().equals(collectionAlias)) {
 						if (idx.getColumnIdList().contains(vo.getColumnId())) {
 							if (right instanceof StaticOperand) {
-								value = right.getValue(null, null);
+								value = right.getValue((TableRecord) null, null);
 							} else if (right instanceof VariableOperand){
 								if (idx.getColumnIdList().contains(((VariableOperand) right).getColumnId())) {
 									value = context.getValue(((VariableOperand) right).getCollectionAlias(), ((VariableOperand) right).getColumnId(), null);
@@ -184,7 +185,7 @@ public class IndexRangeScan implements QueryPlan {
 						}
 					}
 				} else if (left instanceof StaticOperand) {
-					value = left.getValue(null, null);
+					value = left.getValue((TableRecord) null, null);
 					if (right instanceof VariableOperand) {
 						VariableOperand vo = (VariableOperand) right;
 						if (vo.getCollectionAlias().equals(collectionAlias)) {
@@ -274,7 +275,10 @@ public class IndexRangeScan implements QueryPlan {
 			if (column == null) {
 				return null;
 			}
-			return new IndexResultContent((IndexKeyType) column, meta);
+			if (column instanceof ExtendedColumn) {
+				column = (IndexKeyType) ((ExtendedColumn) column).getValue(meta);
+			}
+			return new IndexResultContent((IndexKeyType) column, meta, pinnedBlocks);
 		}
 				
 		public Block getCurrentBlock() {
@@ -303,7 +307,10 @@ public class IndexRangeScan implements QueryPlan {
 			IndexRecord record = (IndexRecord) iter.next();
 			currentRecord = record;
 			DBType column = record.getColumn();
-			IndexKeyType ikt = (IndexKeyType) column;
+			if (column instanceof ExtendedColumn) {
+				column = (IndexKeyType) ((ExtendedColumn) column).getValue(meta);
+			}
+			IndexKeyType ikt = (IndexKeyType) (column instanceof ExtendedColumn ? ((ExtendedColumn) column).getValue(meta) : column);
 			for (int i= 0; i < min.getValue().size(); i++) {
 				DBType minValue = min.getValue().get(i);
 				DBType maxValue = max.getValue().get(i);

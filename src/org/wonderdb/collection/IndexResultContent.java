@@ -19,6 +19,7 @@ package org.wonderdb.collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import org.wonderdb.types.DBType;
 import org.wonderdb.types.ExtendedColumn;
@@ -34,10 +35,12 @@ import org.wonderdb.types.record.IndexRecord;
 public class IndexResultContent extends IndexRecord implements ResultContent {
 	IndexKeyType ikt = null;
 	IndexRecordMetadata meta = null;
+	Set<Object> pinnedBlocks = null;
 	
-	public IndexResultContent(IndexKeyType ikt, TypeMetadata meta) {
+	public IndexResultContent(IndexKeyType ikt, TypeMetadata meta, Set<Object> pinnedBlocks) {
 		this.ikt = ikt;
 		this.meta = (IndexRecordMetadata) meta;
+		this.pinnedBlocks = pinnedBlocks;
 	}
 	
 	@Override
@@ -47,8 +50,9 @@ public class IndexResultContent extends IndexRecord implements ResultContent {
 		if (posn >= 0) {
 			DBType dt = ikt.getValue().get(posn);
 			if (dt instanceof ExtendedColumn) {
-				return ((ExtendedColumn) dt).getValue();
+				return ((ExtendedColumn) dt).getValue(meta);
 			}
+			return dt;
 		}
 		return UndefinedType.getInstance();
 	}

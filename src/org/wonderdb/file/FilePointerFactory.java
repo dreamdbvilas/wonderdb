@@ -21,25 +21,37 @@ import java.io.RandomAccessFile;
 import java.nio.ByteBuffer;
 import java.nio.channels.AsynchronousFileChannel;
 import java.nio.channels.FileChannel;
+import java.nio.file.OpenOption;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 
+import org.wonderdb.server.WonderDBPropertyManager;
+import org.wonderdb.thread.WonderDBThreadFactory;
 import org.wonderdb.types.FileBlockEntry;
 
 public class FilePointerFactory {
-	private Map<Byte, BlockingQueue<AsynchronousFileChannel>> asyncChannelMap = new HashMap<>();
+	private Map<Byte, AsynchronousFileChannel> asyncChannelMap = new HashMap<>();
 	private Map<Byte, BlockingQueue<FileChannel>> syncChannelMap = new HashMap<>();
 	private Map<Byte, RandomAccessFile> fileMap = new HashMap<>();
 	
+	ExecutorService executor = null;
 	private static FilePointerFactory pool = new FilePointerFactory();
 	
 	private FilePointerFactory() {
+		int asyncCoreSize = WonderDBPropertyManager.getInstance().getDiskAsyncWriterThreadPoolSize();
+		WonderDBThreadFactory t = new WonderDBThreadFactory("diskAsyncWriter");
+		executor = new ThreadPoolExecutor (asyncCoreSize, asyncCoreSize, 5, TimeUnit.MINUTES, new ArrayBlockingQueue<Runnable>(20), t);
 	}
 	
 	public static FilePointerFactory getInstance() {
@@ -47,24 +59,26 @@ public class FilePointerFactory {
 	}
 	
 	public void create(FileBlockEntry entry) {
-		BlockingQueue<AsynchronousFileChannel> q = new ArrayBlockingQueue<>(5);
-		asyncChannelMap.put(entry.getFileId(), q);
-		for (int i = 0; i < 5; i++) {
-			Path path = Paths.get(entry.getFileName());
-			AsynchronousFileChannel afc = null;
-			try {
-				afc = AsynchronousFileChannel.open(path, StandardOpenOption.READ, StandardOpenOption.WRITE, StandardOpenOption.CREATE);
-			} catch (IOException e) {
-				e.printStackTrace();
-				throw new RuntimeException(e);
-			}
-			q.add(afc);
+		Path path = Paths.get(entry.getFileName());
+		AsynchronousFileChannel afc = null;
+		try {
+			Set<OpenOption> set = new HashSet<>();
+			set.add(StandardOpenOption.READ);
+			set.add(StandardOpenOption.WRITE);
+			set.add(StandardOpenOption.CREATE);
+			
+//				afc = AsynchronousFileChannel.open(path, StandardOpenOption.READ, StandardOpenOption.WRITE, StandardOpenOption.CREATE, executor);
+			afc = AsynchronousFileChannel.open(path, set, executor);
+			asyncChannelMap.put(entry.getFileId(), afc);
+		} catch (IOException e) {
+			e.printStackTrace();
+			throw new RuntimeException(e);
 		}
 		
 		BlockingQueue<FileChannel> q1 = new ArrayBlockingQueue<>(5);
 		syncChannelMap.put(entry.getFileId(), q1);
 		for (int i = 0; i < 5; i++) {
-			Path path = Paths.get(entry.getFileName());
+			path = Paths.get(entry.getFileName());
 			FileChannel fc = null;
 			try {
 				fc = FileChannel.open(path, StandardOpenOption.READ, StandardOpenOption.WRITE, StandardOpenOption.CREATE);
@@ -77,8 +91,8 @@ public class FilePointerFactory {
 		
 		try {
 			RandomAccessFile raf = new RandomAccessFile(entry.getFileName(), "rw");
-			if (raf.length() < entry.getBlockSize()*100) {
-				raf.setLength(entry.getBlockSize()*100);
+			if (raf.length() < entry.getBlockSize()*10000) {
+				raf.setLength(entry.getBlockSize()*10000);
 			}
 			fileMap.put(entry.getFileId(), raf);
 		} catch (FileNotFoundException e) {
@@ -88,25 +102,7 @@ public class FilePointerFactory {
 	}
 	
 	public synchronized void closAll() {
-		Iterator<BlockingQueue<AsynchronousFileChannel>> iter = asyncChannelMap.values().iterator();
-		while (iter.hasNext()) {
-			BlockingQueue<AsynchronousFileChannel> asyncChannels = iter.next();
-			AsynchronousFileChannel afc = null;
-			for (int closed = 0; closed < 5; closed++) {
-				try {
-					afc = asyncChannels.take();
-				} catch (InterruptedException e1) {
-					// TODO Auto-generated catch block
-					e1.printStackTrace();
-				}
-				try {
-					afc.close();
-				} catch (IOException e) {
-					// TODO Auto-generated catch block
-					e.printStackTrace();
-				}
-			}
-		}
+		executor.shutdownNow();
 		
 		Iterator<BlockingQueue<FileChannel>> syncIter = syncChannelMap.values().iterator();
 		while (syncIter.hasNext()) {
@@ -166,20 +162,7 @@ public class FilePointerFactory {
 	}
 	
 	AsynchronousFileChannel getAsyncChannel(byte fileId) {
-		BlockingQueue<AsynchronousFileChannel> q = asyncChannelMap.get(fileId);
-		try {
-			AsynchronousFileChannel c = q.take();
-			return c;
-		} catch (InterruptedException e) {
-			// TODO Auto-generated catch block
-			e.printStackTrace();
-		}
-		return null;
-	}
-	
-	void returnAsyncChannel(byte fileId, AsynchronousFileChannel channel) {
-		BlockingQueue<AsynchronousFileChannel> q = asyncChannelMap.get(fileId);
-		q.add(channel);
+		return asyncChannelMap.get(fileId);
 	}
 	
 	public long increaseSizeBy(byte fileId, long size) {

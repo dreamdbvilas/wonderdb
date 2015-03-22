@@ -87,6 +87,10 @@ public class LazyExtendedSpaceProvider {
 			List<BlockPtr> l = ExtendedUtils.getInstance().extend(fileId, pinnedBlocks);
 			BlockPtr p = l.get(l.size()-1);
 			BlockPtr prevPtr = list.get(list.size()-1);
+			if (p.getBlockPosn() < prevPtr.getBlockPosn()) {
+				int x = 0;
+				x=20;
+			}
 			CacheEntryPinner.getInstance().pin(prevPtr, pinnedBlocks);
 			block = secondaryCacheHandler.get(prevPtr);
 			ChannelBuffer buf = block.getData();

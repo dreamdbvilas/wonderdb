@@ -48,11 +48,11 @@ public class BlockManager {
 			SerializedBlockImpl serializedBlock = (SerializedBlockImpl) secondaryCacheHandler.get(ptr);
 			if (serializedBlock == null) {
 				serializedBlock = (SerializedBlockImpl) InflightFileReader.getInstance().getBlock(ptr);
-				block = BlockSerilizer.getInstance().getBlock(serializedBlock, meta);
-				Block b1 = (Block) primaryCacheHandler.addIfAbsent(block);
-				if (b1 == block) {
-					primaryResourceProvider.getResource(ptr, StorageUtils.getInstance().getSmallestBlockCount(ptr));
-				}
+			}
+			block = BlockSerilizer.getInstance().getBlock(serializedBlock, meta);
+			Block b1 = (Block) primaryCacheHandler.addIfAbsent(block);
+			if (b1 == block) {
+				primaryResourceProvider.getResource(ptr, StorageUtils.getInstance().getSmallestBlockCount(ptr));
 			}
 		}
 		return block;

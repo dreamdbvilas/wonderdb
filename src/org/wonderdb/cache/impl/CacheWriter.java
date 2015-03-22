@@ -15,15 +15,22 @@ package org.wonderdb.cache.impl;
  *    limitations under the License.
  *******************************************************************************/
 
+import java.nio.ByteBuffer;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.Future;
 import java.util.concurrent.RejectedExecutionException;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 
+import org.jboss.netty.buffer.ChannelBuffer;
+import org.jboss.netty.buffer.ChannelBuffers;
 import org.wonderdb.cache.CacheDestinationWriter;
 import org.wonderdb.cache.Cacheable;
 import org.wonderdb.txnlogger.LogManager;
@@ -99,6 +106,8 @@ public class CacheWriter<Key, Data> extends Thread{
 				Set<Object> pinnedBlocks = new HashSet<>();
 				inprocessSyncTime = -1;
 				Set<Key> writtenBlocks = new HashSet<>();
+				Map<Key, Data> bufferMap = new HashMap<>();
+				
 				while (iter.hasNext()) {
 					Key ptr = iter.next();
 					cacheMap.getBucket(ptr, true);
@@ -107,33 +116,58 @@ public class CacheWriter<Key, Data> extends Thread{
 						if (!CacheEntryPinner.getInstance().isPinned(ptr) && cacheMap.writtenBlocks.get(ptr) != 1) {
 							CacheEntryPinner.getInstance().pin(ptr, pinnedBlocks);
 							Cacheable<Key, Data> block = cacheMap.get(ptr);
-							
 							if (block == null) {
 								continue;
 							}
 							boolean flag = cacheMap.writtenBlocks.replace(ptr, 0, 1);
-							if (flag) {
-								writer.copy(block.getFull());
-								flag = cacheMap.writtenBlocks.replace(ptr, 1, 2);
+							Data data = null;
+							if (flag) {								
+								data = writer.copy(ptr, block.getFull());
+								bufferMap.put(ptr, data);
+//								flag = cacheMap.writtenBlocks.replace(ptr, 1, 2);
 							} else {
 								continue;
 							}
-							if (flag) {
-								while (true) {
-									try {
-										writer.write(block.getPtr());
-										break;
-									} catch (RejectedExecutionException e) {
-										waitForThreadPoolNotFullCondition();									
-									}
-								}
-							}
+//							if (flag) {
+//								while (true) {
+//									try {
+//										writer.write(block.getPtr(), data);
+//										break;
+//									} catch (RejectedExecutionException e) {
+//										waitForThreadPoolNotFullCondition();									
+//									}
+//								}
+//							}
 						}
 						writtenBlocks.add(ptr);
 					} finally {
 						cacheMap.returnBucket(ptr, true);
 						CacheEntryPinner.getInstance().unpin(ptr, pinnedBlocks);
 					}								
+				}
+
+				Iterator<Key> iter1 = bufferMap.keySet().iterator();
+				List<Future<Integer>> futures = new ArrayList<>();
+				while (iter1.hasNext()) {
+					Key key = iter1.next();
+					Data data = bufferMap.get(key);
+					boolean flag = cacheMap.writtenBlocks.replace(key, 1, 2);
+					if (flag) {
+						while (true) {
+							try {
+								Future<Integer> future = writer.write(key, data);
+								futures.add(future);
+								break;
+							} catch (RejectedExecutionException e) {
+								Thread.sleep(100);									
+							}
+						}
+						
+					}
+				}
+
+				for (int i = 0; i < futures.size(); i++) {
+					futures.get(i).get();
 				}
 				
 				syncTime = Math.max(syncTime, inprocessSyncTime);
@@ -146,11 +180,10 @@ public class CacheWriter<Key, Data> extends Thread{
 					return;
 				}
 				
-				Iterator<Key> iter1 = writtenBlocks.iterator();
+				iter1 = writtenBlocks.iterator();
 				while (iter1.hasNext()) {
 					Key ptr = iter1.next();
-					boolean f = cacheMap.writtenBlocks.remove(ptr, 2);
-					int i = 0;
+					cacheMap.writtenBlocks.remove(ptr, 2);
 				}
 			} catch (Exception e) {
 				e.printStackTrace();
@@ -158,27 +191,37 @@ public class CacheWriter<Key, Data> extends Thread{
 		}
 	}
 	
-	private void waitForThreadPoolNotFullCondition() {
-		try {
-			threadPoolFullLock.lock();
-			while (true) {
-				try {
-					threadPoolFullCondition.await(20, TimeUnit.MILLISECONDS);
-					break;
-				} catch (InterruptedException e) {
-				}
-			}
-		} finally {
-			threadPoolFullLock.unlock();
-		}
+	public ByteBuffer copy(ChannelBuffer data) {
+		data.clear();
+		data.writerIndex(data.capacity());
+		ChannelBuffer b = ChannelBuffers.copiedBuffer(data);
+		b.clear();
+		b.writerIndex(b.capacity());
+		return b.toByteBuffer();
 	}
-	
-	private void notifyThreadPoolNotFull() {
-		try {
-			threadPoolFullLock.lock();
-			threadPoolFullCondition.signalAll();
-		} finally {
-			threadPoolFullLock.unlock();
-		}		
-	}
+
+//	
+//	private void waitForThreadPoolNotFullCondition() {
+//		try {
+//			threadPoolFullLock.lock();
+//			while (true) {
+//				try {
+//					threadPoolFullCondition.await(20, TimeUnit.MILLISECONDS);
+//					break;
+//				} catch (InterruptedException e) {
+//				}
+//			}
+//		} finally {
+//			threadPoolFullLock.unlock();
+//		}
+//	}
+//	
+//	private void notifyThreadPoolNotFull() {
+//		try {
+//			threadPoolFullLock.lock();
+//			threadPoolFullCondition.signalAll();
+//		} finally {
+//			threadPoolFullLock.unlock();
+//		}		
+//	}
 }

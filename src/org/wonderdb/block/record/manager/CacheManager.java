@@ -1,17 +1,68 @@
 package org.wonderdb.block.record.manager;
 
+import java.io.File;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Iterator;
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
+import org.apache.log4j.BasicConfigurator;
+import org.apache.log4j.PropertyConfigurator;
+import org.wonderdb.block.IndexCompareIndexQuery;
+import org.wonderdb.cache.impl.CacheEntryPinner;
 import org.wonderdb.cluster.Shard;
+import org.wonderdb.core.collection.BTree;
+import org.wonderdb.core.collection.ResultIterator;
+import org.wonderdb.core.collection.WonderDBList;
 import org.wonderdb.exception.InvalidCollectionNameException;
+import org.wonderdb.parser.jtree.ParseException;
+import org.wonderdb.parser.jtree.SimpleNode;
+import org.wonderdb.parser.jtree.SimpleNodeHelper;
+import org.wonderdb.parser.jtree.UQLParser;
+import org.wonderdb.query.parse.CollectionAlias;
+import org.wonderdb.query.parser.jtree.DBSelectQueryJTree;
+import org.wonderdb.schema.CollectionMetadata;
+import org.wonderdb.schema.SchemaMetadata;
+import org.wonderdb.serialize.ColumnSerializer;
+import org.wonderdb.serialize.SerializerManager;
+import org.wonderdb.serialize.record.RecordSerializer;
+import org.wonderdb.server.WonderDBCacheService;
+import org.wonderdb.txnlogger.LogManager;
+import org.wonderdb.txnlogger.TransactionId;
+import org.wonderdb.types.ByteArrayType;
+import org.wonderdb.types.ColumnSerializerMetadata;
 import org.wonderdb.types.DBType;
-import org.wonderdb.types.IntType;
-import org.wonderdb.types.StringType;
+import org.wonderdb.types.ExtendedColumn;
+import org.wonderdb.types.IndexKeyType;
+import org.wonderdb.types.IndexNameMeta;
+import org.wonderdb.types.TypeMetadata;
+import org.wonderdb.types.record.ExtendedTableRecord;
+import org.wonderdb.types.record.IndexRecord;
+import org.wonderdb.types.record.TableRecord;
 
 public class CacheManager {
 	private static CacheManager instance = new CacheManager();
-	
+	static {
+		File file = new File("./log4j.properties");
+		if (file.exists()) {
+			PropertyConfigurator.configure("./log4j.properties");
+		} else {
+			String val = System.getProperty("log4j.configuration");
+			file = null;
+			if (val != null && val.length() > 0) {
+				file = new File(val);
+			}
+			if (file != null && file.exists()) {
+				PropertyConfigurator.configure(val);
+			} else {
+				BasicConfigurator.configure();
+			}
+		}
+	}
+
 	private CacheManager() {
 	}
 	
@@ -19,22 +70,218 @@ public class CacheManager {
 		return instance;
 	}
 	
-	public void add(int keyType, String key, int valueType, String value) {
+	public void set(byte[] key, byte[] value) {
 		Map<Integer, DBType> map = new HashMap<>();
-		map.put(1, new IntType(keyType));
-		map.put(2, new StringType(key));
-		map.put(3, new IntType(valueType));
-		map.put(4, new StringType(value));
+		map.put(0, new ByteArrayType(key));
+		map.put(1, new ByteArrayType(value));
 		Shard shard = new Shard("");
 		try {
-			TableRecordManager.getInstance().addTableRecord("_cache", map, shard);
+			TableRecordManager.getInstance().addTableRecord("cache", map, shard, true);
 		} catch (InvalidCollectionNameException e) {
 			// TODO Auto-generated catch block
 			e.printStackTrace();
 		}
 	}
 	
-	public void update() {
-//		TableRecordManager.getInstance().updateTableRecord(", recordId, shard, updateSetList, tree, fromMap, txnId)
+	public void remove(byte[] key) {
+		TransactionId txnId = null;
+		Set<Object> pinnedBlocks = new HashSet<>();
+		try {
+			List<DBType> list = new ArrayList<DBType>(1);
+			list.add(new ByteArrayType(key));
+			IndexKeyType ikt = new IndexKeyType(list, null);
+			IndexNameMeta inm = SchemaMetadata.getInstance().getIndex("cacheIndex");
+			BTree tree = inm.getIndexTree(new Shard(""));
+			TypeMetadata meta = SchemaMetadata.getInstance().getIndexMetadata(inm);
+			IndexCompareIndexQuery iciq = new IndexCompareIndexQuery(ikt, true, meta, pinnedBlocks);
+			ResultIterator iter = tree.find(iciq, false, pinnedBlocks);
+			IndexRecord ir = null;
+			try {
+				while (iter.hasNext()) {
+					ir = (IndexRecord) iter.next();
+					break;
+				}
+			} finally {
+				iter.unlock(true);
+			}
+			
+			IndexKeyType entry = null;
+			if (ir != null) {
+				DBType column = ir.getColumn();
+				if (column instanceof ExtendedColumn) {
+					entry = (IndexKeyType) ((ExtendedColumn) column).getValue(meta);
+				} else {
+					entry = (IndexKeyType) column;
+				}
+				txnId = LogManager.getInstance().startTxn();
+				tree.remove(entry, pinnedBlocks, txnId);
+				CollectionMetadata colMeta = SchemaMetadata.getInstance().getCollectionMetadata("cache");
+				WonderDBList dbList = colMeta.getRecordList(new Shard(""));
+				meta = SchemaMetadata.getInstance().getTypeMetadata("cache");
+				dbList.deleteRecord(entry.getRecordId(), txnId, meta, pinnedBlocks);
+			}
+		} finally {
+			LogManager.getInstance().commitTxn(txnId);
+			CacheEntryPinner.getInstance().unpin(pinnedBlocks, pinnedBlocks);
+			
+		}
+	}
+
+	public byte[] get(byte[] key) {
+		String query = "select value from cache where key = ?;";
+		UQLParser parser = new UQLParser(query);
+		SimpleNode selectNode = null;
+		try {
+			selectNode = parser.Start();
+		} catch (ParseException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+		ByteArrayType bat = new ByteArrayType(key);
+		SimpleNode n = SimpleNodeHelper.getInstance().getFirstNode(selectNode, org.wonderdb.parser.jtree.UQLParserTreeConstants.JJTQ);
+		n.jjtSetValue(bat);
+		DBSelectQueryJTree q = new DBSelectQueryJTree(query, selectNode, selectNode, 0, null);
+		List<Map<CollectionAlias, TableRecord>> list = q.executeAndGetTableRecord(new Shard(""));
+		if (list == null || list.size() == 0) {
+			return null;
+		}
+		Iterator<TableRecord> iter = list.get(0).values().iterator();
+		while (iter.hasNext()) {
+			TableRecord tr = iter.next();
+			bat = (ByteArrayType) tr.getValue(1);
+			return bat.get();
+		}
+		return null;
+	}
+//	public byte[] get(byte[] key) {
+//		ByteArrayType bat = new ByteArrayType(key);
+//		Set<Object> pinnedBlocks = new HashSet<>();
+//		IndexNameMeta inm = SchemaMetadata.getInstance().getIndex("_cacheIndex");
+//		TypeMetadata meta = SchemaMetadata.getInstance().getIndexMetadata(inm);
+//		Shard shard = new Shard("");
+//		
+//		List<DBType> list = new ArrayList<>();
+//		list.add(bat);
+//		IndexKeyType ikt = new IndexKeyType(list, null);
+//		BTree tree = inm.getIndexTree(shard);
+//		IndexQuery entry = new IndexCompareIndexQuery(ikt, true, meta, pinnedBlocks);
+//		ResultIterator iter = tree.find(entry, false, pinnedBlocks);
+//		while (iter.hasNext()) {
+//			IndexRecord record = (IndexRecord) iter.next();
+//			
+//		}
+//	}
+	
+	public static void main(String[] args) throws Exception {
+		WonderDBCacheService.getInstance().init(args[0]);
+		StringBuilder sb = new StringBuilder();
+		for (int i = 0; i < 1000; i++) {
+			sb.append("b");
+		}
+//		StringBuilder sb1 = new StringBuilder();
+//		for (int i = 0; i < 2500; i++) {
+//			sb1.append("a");
+//		}
+//		for (int i = 0; i < 7800; i++) {
+//			System.out.println("reading: " + i);
+//			byte[] bytes = CacheManager.getInstance().get((""+i).getBytes());
+//		}
+		IndexNameMeta inm = SchemaMetadata.getInstance().getIndex("cacheIndex");
+		BTree tree = inm.getIndexTree(new Shard(""));
+		Set<Object> pinnedBlocks = new HashSet<>();
+//		ResultIterator iter = tree.getHead(false, pinnedBlocks);
+//		IndexKeyType prev = null;
+//		int x = 0;
+//		while (iter.hasNext()) {
+//			IndexRecord record = (IndexRecord) iter.next();
+//			IndexKeyType ikt = (IndexKeyType) record.getColumn();
+//			System.out.println("Read: " + new String(((ByteArrayType) ikt.getValue().get(0)).get()));
+//			if (prev != null) {
+//				if (ikt.compareTo(prev) <= 0) {
+//					int i = 0;
+//					i = 20;
+//				}
+//			}
+//			if (x == 18795) {
+//				int i = 0;
+//				i = 20;
+//			}
+//			x++;
+//			prev = ikt;
+//		}
+//		for (int i = 0; i < 1000; i++) {
+//			System.out.println(i);
+//			if (i == 18796) {
+//				int x = 100;
+//				x = 0;
+//			}
+//			CacheManager.getInstance().set((""+i).getBytes(), sb.toString().getBytes());
+////			if (value == null) {
+////				int x = 100;
+////				x = 0;				
+////			}
+//		}
+//		CacheManager.getInstance().set("vilas".getBytes(), "athavale".getBytes());
+//		CacheManager.getInstance().remove(sb.toString().getBytes());
+//		byte[] values = CacheManager.getInstance().get("vilas".getBytes());
+//		values = CacheManager.getInstance().get(new String(""+451).getBytes());
+//
+		WonderDBList dbList = SchemaMetadata.getInstance().getCollectionMetadata("cache").getRecordList(new Shard(""));
+		TypeMetadata meta = SchemaMetadata.getInstance().getTypeMetadata("cache");
+		ResultIterator iter = dbList.iterator(meta, pinnedBlocks);
+		int i = 0;
+		while (iter.hasNext()) {
+			System.out.println("record read" + i++);
+			TableRecord record = (TableRecord) iter.next();
+			DBType dt = record.getColumnMap().get(1);
+			ByteArrayType bat = null;
+			if (dt instanceof ExtendedColumn) {
+				ColumnSerializer.getInstance().readFull(dt, new ColumnSerializerMetadata(SerializerManager.BYTE_ARRAY_TYPE));
+				bat = (ByteArrayType) ((ExtendedColumn) dt).getValue(null);
+			} else if (record instanceof ExtendedTableRecord) {
+				RecordSerializer.getInstance().readFull(record, meta);
+				bat = (ByteArrayType) record.getValue(1);
+			} else {
+				bat = (ByteArrayType) dt;
+			}
+			byte[] value = bat.get();
+			if (i == 105) {
+				int c = 0;
+				c = 10;
+			}
+			if (value == null) {
+				System.out.println("deleted: " + i);
+			} else {
+				String s = new String(value);
+				if (!s.equals(sb.toString())) {
+					System.out.println("failed" + i);
+				}
+			}
+//			if (value == null || value.length != 1000) {
+//				int x = 0;
+//				x = 20;
+//			}
+//			if (i == 243) {
+//				int x = 30;
+//				x = 40;
+//			}
+		}
+		iter.unlock(true);
+		CacheEntryPinner.getInstance().unpin(pinnedBlocks, pinnedBlocks);
+//		CacheManager.getInstance().remove("123".getBytes());
+		byte[] value = CacheManager.getInstance().get("123".getBytes());
+		CacheManager.getInstance().set("123".getBytes(), sb.toString().getBytes());
+//		for (i = 100; i < 400; i++) {
+//			System.out.println(i);
+//			CacheManager.getInstance().remove(new String(""+i).getBytes());
+////			if (values == null) {
+////				System.out.println("failed: " + i);
+////			}
+//			
+//		}
+//		CacheManager.getInstance().set(sb.toString().getBytes(), sb.toString().getBytes());
+		byte[] values = CacheManager.getInstance().get("123".getBytes());
+		System.out.println("value is: " + values +"done");
+		WonderDBCacheService.getInstance().shutdown();
 	}
 }

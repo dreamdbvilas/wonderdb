@@ -27,6 +27,7 @@ import org.wonderdb.query.parse.StaticOperand;
 import org.wonderdb.types.DBType;
 import org.wonderdb.types.StringLikeType;
 import org.wonderdb.types.StringType;
+import org.wonderdb.types.record.TableRecord;
 
 
 
@@ -55,7 +56,7 @@ public class ExpressionEvaluator {
 				leftVal = dataContext.getValue(vo.getCollectionAlias(), vo.getColumnId(), vo.getPath());
 			} else {
 				invert = true;
-				leftVal = ((StaticOperand) left).getValue(null, null);
+				leftVal = ((StaticOperand) left).getValue((TableRecord) null, null);
 			}
 			
 			if (right instanceof VariableOperand) {
@@ -64,7 +65,7 @@ public class ExpressionEvaluator {
 				invert = true;
 			} else {
 				invert = false;
-				rightVal = ((StaticOperand) right).getValue(null, null);
+				rightVal = ((StaticOperand) right).getValue((TableRecord) null, null);
 			}
 			
 			int op = exp.getOperator();

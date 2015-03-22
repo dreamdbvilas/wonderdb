@@ -29,11 +29,11 @@ public class RecordSerializer {
 		return ObjectRecordSerializer.getInstance().readMinimum(blockHeader, buffer, meta);		
 	}
 	
-	public void readFull(Record record, TypeMetadata meta, Set<Object> pinnedBlocks) {
+	public void readFull(Record record, TypeMetadata meta) {
 		if (meta instanceof TableRecordMetadata) {
-			TableRecordSerializer.getInstance().readFull((TableRecord) record, meta, pinnedBlocks);
+			TableRecordSerializer.getInstance().readFull((TableRecord) record, meta);
 		} else {
-			ObjectRecordSerializer.getInstance().readFull((ObjectRecord) record, meta, pinnedBlocks);
+			ObjectRecordSerializer.getInstance().readFull((ObjectRecord) record, meta);
 		}
 	}
 	

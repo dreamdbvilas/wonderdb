@@ -1,6 +1,7 @@
 package org.wonderdb.block;
 
 import java.util.Set;
+import java.util.Stack;
 
 import org.wonderdb.types.BlockPtr;
 
@@ -26,13 +27,13 @@ public class IndexLeafBlock extends BaseIndexBlock {
 	}
 	
 	@Override
-	public BlockEntryPosition find(IndexQuery entry, boolean writeLock, Set<Object> pinnedBlocks) {
+	public BlockEntryPosition find(IndexQuery entry, boolean writeLock, Set<Object> pinnedBlocks, Stack<BlockPtr> stack) {
 		if (writeLock) {
 			writeLock();
 		} else {
 			readLock();
 		}
-		int posn = findPosn(entry, writeLock, pinnedBlocks);
+		int posn = findPosn(entry, writeLock, pinnedBlocks, stack);
 		return new BlockEntryPosition(this, posn);
 	}
 }

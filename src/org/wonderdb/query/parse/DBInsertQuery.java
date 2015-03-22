@@ -168,6 +168,11 @@ public class DBInsertQuery extends BaseDBQuery {
 		if (o instanceof StringType) {
 			return convertToDBType((StringType) o, type);
 		}
+		
+		if (o instanceof DBType) {
+			return (DBType) o;
+		}
+		
 		return null;
 	}
 	

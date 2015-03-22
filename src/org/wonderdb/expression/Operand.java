@@ -1,7 +1,5 @@
 package org.wonderdb.expression;
 
-import java.util.Set;
-
 import org.wonderdb.types.DBType;
 import org.wonderdb.types.IndexKeyType;
 import org.wonderdb.types.TypeMetadata;
@@ -26,5 +24,5 @@ import org.wonderdb.types.record.TableRecord;
 
 public interface Operand {
 	DBType getValue(IndexKeyType value, TypeMetadata meta);
-	DBType getValue(TableRecord value, TypeMetadata meta, Set<Object> pinnedBlocks);
+	DBType getValue(TableRecord value, TypeMetadata meta);
 }

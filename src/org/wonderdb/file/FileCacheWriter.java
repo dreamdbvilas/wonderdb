@@ -10,26 +10,29 @@ import org.wonderdb.cache.CacheDestinationWriter;
 import org.wonderdb.types.BlockPtr;
 
 public class FileCacheWriter implements CacheDestinationWriter<BlockPtr, ChannelBuffer> {
-	ByteBuffer buffer = null;
 
 	@Override
-	public void copy(ChannelBuffer data) {
+	public ChannelBuffer copy(BlockPtr ptr, ChannelBuffer data) {
+		
+		data.clear();
+		data.writerIndex(data.capacity());
 		ChannelBuffer b = ChannelBuffers.copiedBuffer(data);
-		b.clear();
-		b.writerIndex(b.capacity());
-		buffer = b.toByteBuffer();
+		return b;
+//		data.clear();
+//		data.writerIndex(data.capacity());
+//		ChannelBuffer b = ChannelBuffers.copiedBuffer(data);
+//		b.clear();
+//		b.writerIndex(b.capacity());
+//		buffer = b.toByteBuffer();
 	}
 
 	@Override
-	public Future<Integer> write(BlockPtr ptr) {
+	public Future<Integer> write(BlockPtr p, ChannelBuffer data) {
 		AsynchronousFileChannel channel = null;
-		Future<Integer> future = null;
-		try {
-			channel = FilePointerFactory.getInstance().getAsyncChannel(ptr.getFileId());
-			future = channel.write(buffer, ptr.getBlockPosn());
-		} finally {
-			FilePointerFactory.getInstance().returnAsyncChannel(ptr.getFileId(), channel);
-		}
-		return future;
+		data.clear();
+		data.writerIndex(data.capacity());
+		ByteBuffer buf = data.toByteBuffer();
+		channel = FilePointerFactory.getInstance().getAsyncChannel(p.getFileId());
+		return channel.write(buf, p.getBlockPosn());
 	}
 }

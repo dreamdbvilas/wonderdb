@@ -1,6 +1,7 @@
 package org.wonderdb.block;
 
 import java.util.Set;
+import java.util.Stack;
 
 import org.wonderdb.serialize.SerializerManager;
 import org.wonderdb.types.BlockPtr;
@@ -29,17 +30,21 @@ public class IndexBranchBlock extends BaseIndexBlock {
 		super(ptr);
 	}
 	
-	public BlockEntryPosition find(IndexQuery entry, boolean writeLock, Set<Object> pinnedBlocks) {
-		int mid = findPosn(entry, writeLock, pinnedBlocks);
+	public BlockEntryPosition find(IndexQuery entry, boolean writeLock, Set<Object> pinnedBlocks, Stack<BlockPtr> stack) {
+		int mid = findPosn(entry, writeLock, pinnedBlocks, stack);
 
 		if (mid >= getData().size()) {
 			mid = getData().size()-1;
+		} else {
+			int b = 0;
+			b = 10;
+			
 		}
 		
 		IndexRecord r = (IndexRecord) getData().get(mid);
 		BlockPtr ptr = (BlockPtr) r.getColumn();
 		IndexBlock block = (IndexBlock) BlockManager.getInstance().getBlock(ptr, new ColumnSerializerMetadata(SerializerManager.BLOCK_PTR), pinnedBlocks);
-		return block.find(entry, writeLock, pinnedBlocks);
+		return block.find(entry, writeLock, pinnedBlocks, stack);
 		
 	}
 

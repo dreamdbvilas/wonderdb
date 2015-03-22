@@ -25,7 +25,7 @@ import org.wonderdb.types.IndexKeyType;
 
 public interface BTree {
 	void insert(IndexKeyType entry, Set<Object> pinnedBlocks, TransactionId txnId);
-	public void remove(IndexKeyType entry, Set<Object> pinnedBlocks, TransactionId txnId);
+	public IndexKeyType remove(IndexKeyType entry, Set<Object> pinnedBlocks, TransactionId txnId);
 	ResultIterator find(IndexQuery entry, boolean writeLock, Set<Object> pinnedBlocks);
 	ResultIterator iterator();
 	

@@ -72,7 +72,7 @@ public class FileBlockManager {
 		return entry.getFileName();
 	}
 	
-	public long getNextBlock(byte fileId) {
+	public synchronized long getNextBlock(byte fileId) {
 		BlockingQueue<Long> bq = pointerPoolMap.get(fileId);
 		Long curPosn = null;
 		while (true) {

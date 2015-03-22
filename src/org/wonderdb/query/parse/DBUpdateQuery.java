@@ -48,6 +48,7 @@ public class DBUpdateQuery extends BaseDBQuery {
 	Map<String, CollectionAlias> fromMap = null;
 	List<UpdateSetExpression> updateSetExpList = null;
 	DBSelectQueryJTree selQuery = null;
+	List<Integer> selectColumns = null;
 	
 	public DBUpdateQuery(String q, SimpleNode query, int type, ChannelBuffer buffer) {
 		super(q, query, type, buffer);
@@ -81,6 +82,7 @@ public class DBUpdateQuery extends BaseDBQuery {
 			colList.add(vo.getColumnId());
 		}
 
+		selectColumns = selectColumnList.get(caList.get(0));
 		selQuery = new DBSelectQueryJTree(getQueryString(), query, fromMap, selectColumnList, filterNode, type, buffer);
 		andExp = selQuery.getAndExpression();
 	}
@@ -132,7 +134,7 @@ public class DBUpdateQuery extends BaseDBQuery {
 							txnId = LogManager.getInstance().startTxn();
 						}
 						updateCount = updateCount + TableRecordManager.getInstance().updateTableRecord(getCollectionName(), 
-								recId, shard, updateSetExpList, queryNode, fromMap, txnId);
+								recId, shard, selectColumns, updateSetExpList, queryNode, fromMap, txnId);
 					} catch (Exception e) {
 						throw new RuntimeException(e);
 					} finally {

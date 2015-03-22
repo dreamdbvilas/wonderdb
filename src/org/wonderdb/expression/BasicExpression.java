@@ -6,7 +6,7 @@ import org.wonderdb.query.parse.StaticOperand;
 import org.wonderdb.schema.CollectionMetadata;
 import org.wonderdb.schema.SchemaMetadata;
 import org.wonderdb.types.DBType;
-import org.wonderdb.types.StringType;
+import org.wonderdb.types.record.TableRecord;
 
 /*******************************************************************************
  *    Copyright 2013 Vilas Athavale
@@ -43,7 +43,7 @@ public class BasicExpression implements Expression {
 				int colId = ((VariableOperand) right).getColumnId();
 				CollectionMetadata colMeta = SchemaMetadata.getInstance().getCollectionMetadata(ca.getCollectionName());
 				int type = colMeta.getCollectionColumn(colId).getColumnType();
-				DBType val = DBInsertQuery.convertToDBType(left.getValue(null, null), type);
+				DBType val = DBInsertQuery.convertToDBType(left.getValue((TableRecord) null, null), type);
 				this.left = new StaticOperand(val);
 			}
 		}
@@ -54,7 +54,7 @@ public class BasicExpression implements Expression {
 				int colId = ((VariableOperand) left).getColumnId();
 				CollectionMetadata colMeta = SchemaMetadata.getInstance().getCollectionMetadata(ca.getCollectionName());
 				int type = colMeta.getCollectionColumn(colId).getColumnType();
-				DBType val = DBInsertQuery.convertToDBType((StringType) right.getValue(null, null), type);
+				DBType val = DBInsertQuery.convertToDBType(right.getValue((TableRecord) null, null), type);
 				this.right = new StaticOperand(val);
 			}
 		}

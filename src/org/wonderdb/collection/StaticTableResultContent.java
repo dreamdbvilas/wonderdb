@@ -39,7 +39,7 @@ public class StaticTableResultContent implements ResultContent {
 		DBType column = tr.getColumnMap().get(ct);
 		if (column != null) {
 			if (column instanceof ExtendedColumn) {
-				return ((ExtendedColumn) column).getValue();
+				return ((ExtendedColumn) column).getValue(null);
 			}
 			return column;
 		}

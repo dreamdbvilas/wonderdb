@@ -105,7 +105,7 @@ public class FullTableScan implements QueryPlan {
 		
 		public Record next() {
 			TableRecord record = (TableRecord) super.next();
-			return new TableResultContent(record, meta, pinnedBlocks);
+			return new TableResultContent(record, meta);
 		}
 
 //		@Override

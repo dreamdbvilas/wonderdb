@@ -16,6 +16,7 @@ import org.wonderdb.query.parse.CollectionAlias;
 import org.wonderdb.query.parse.StaticOperand;
 import org.wonderdb.schema.CollectionMetadata;
 import org.wonderdb.schema.SchemaMetadata;
+import org.wonderdb.types.DBType;
 import org.wonderdb.types.StringType;
 
 public class SimpleNodeHelper {
@@ -506,7 +507,11 @@ public class SimpleNodeHelper {
 			QueryEvaluator qe = new QueryEvaluator(null, null);
 			qe.processMultiplicativeExpression(node);
 			Object val = node.jjtGetValue();
-			operand = new StaticOperand(new StringType(val != null ? val.toString() : null));
+			if (val instanceof DBType) {
+				operand = new StaticOperand((DBType) val);
+			} else {
+				operand = new StaticOperand(new StringType(val != null ? val.toString() : null));
+			}
 		} else {
 			operand = new TreeOperand();
 		}

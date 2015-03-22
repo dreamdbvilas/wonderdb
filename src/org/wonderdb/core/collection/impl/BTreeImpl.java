@@ -20,6 +20,7 @@ import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Set;
+import java.util.Stack;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 import org.apache.log4j.Logger;
@@ -139,33 +140,44 @@ public class BTreeImpl implements BTree {
 		} else {
 			rootBlock.readLock();
 		}
+		headBlock.readLock();
 		return new BTreeIteratorImpl(new BlockEntryPosition(headBlock, 0), this, writeLock, false, meta);
 	}
 	
 	@Override
-	public void remove(IndexKeyType entry, Set<Object> pinnedBocks, TransactionId txnId) {
+	public IndexKeyType remove(IndexKeyType entry, Set<Object> pinnedBocks, TransactionId txnId) {
 		boolean splitRequired = false;
+		ObjectRecord record = null;
 		while (true) {
 			try {
 				if (!splitRequired) {
-					removeInternal(entry, pinnedBocks, true, txnId);
+					record = (ObjectRecord) removeInternal(entry, pinnedBocks, true, txnId);
 				} else {
-					removeInternal(entry, pinnedBocks, false, txnId);
+					record = (ObjectRecord) removeInternal(entry, pinnedBocks, false, txnId);
 				}
 				break;
 			} catch (SplitRequiredException e) {
 				splitRequired = true;
 			}
 		}
+		if (record != null) {
+			DBType column = record.getColumn();
+			if (column instanceof ExtendedColumn) {
+				return (IndexKeyType) ((ExtendedColumn) column).getValue(meta);
+			}
+			return (IndexKeyType) column;
+		}
+		return null;
 	}
 
-	private void removeInternal(IndexKeyType entry, Set<Object> pinnedBlocks, boolean readLock, TransactionId txnId) {
+	private ObjectRecord removeInternal(IndexKeyType entry, Set<Object> pinnedBlocks, boolean readLock, TransactionId txnId) {
 		Set<Object> findPinnedBlocks = new HashSet<Object>();
 		IndexBlock rootBlock = null;
 		IndexBlock changedBlock = null;
 		Set<Block> cBlocks = new HashSet<Block>();
 		BTreeIteratorImpl iter = null;
-
+		ObjectRecord data = null;
+		Stack<BlockPtr> callBlockStack = new Stack<>();
 		try {
 			if (readLock) {
 				readLock();
@@ -175,15 +187,15 @@ public class BTreeImpl implements BTree {
 			rootBlock = (IndexBlock) BlockManager.getInstance().getBlock(root, meta, findPinnedBlocks);
 			BlockEntryPosition bep = null;
 			IndexCompareIndexQuery query = new IndexCompareIndexQuery(entry.getKey(), true, meta, findPinnedBlocks);
-			bep = rootBlock.find(query, true, findPinnedBlocks);
+			bep = rootBlock.find(query, true, findPinnedBlocks, callBlockStack);
 			iter = new BTreeIteratorImpl(bep, this, true, cBlocks, readLock, meta);
-			ObjectRecord data = null;
 			if (iter.hasNext()) {
 				data = (ObjectRecord) iter.next();
 				if (data.getColumn().compareTo(entry.getKey()) == 0) {
 					iter.remove();
 				} else {
 					Logger.getLogger(getClass()).fatal("Index: " + " " + data.getColumn().toString() + " " + entry.getKey().toString());
+					data = null;
 				}
 			}
 			
@@ -198,7 +210,7 @@ public class BTreeImpl implements BTree {
 			
 			if (changedBlock == null) {
 				Logger.getLogger(getClass()).fatal("remove did not remove an element");
-				return;
+				return null;
 			}
 
 			if (!root.equals(changedBlock.getPtr()) && changedBlock.getData().size() == 0) {
@@ -210,14 +222,23 @@ public class BTreeImpl implements BTree {
 				Iterator<IndexBlock> iter1 = changedBlocks.iterator();
 				while (iter1.hasNext()) {
 					IndexBlock ib = iter1.next();					
-					BlockSerilizer.getInstance().serialize(changedBlock, meta, txnId);
 					CacheEntryPinner.getInstance().pin(ib.getPtr(), findPinnedBlocks);
-				}
-				if (data instanceof Extended) {
-					RecordUtils.getInstance().releaseRecord(data);
+					if (ib instanceof IndexLeafBlock) {
+						BlockSerilizer.getInstance().serialize(ib, meta, txnId);
+					} else {
+						BlockSerilizer.getInstance().serialize(ib, new ColumnSerializerMetadata(SerializerManager.BLOCK_PTR), txnId);						
+					}
 				}
 			} else {				
-				BlockSerilizer.getInstance().serialize(changedBlock, meta, txnId);
+				if (changedBlock instanceof IndexLeafBlock) {
+					BlockSerilizer.getInstance().serialize(changedBlock, meta, txnId);
+				} else {
+					BlockSerilizer.getInstance().serialize(changedBlock, new ColumnSerializerMetadata(SerializerManager.BLOCK_PTR), txnId);						
+				}
+			}
+
+			if (data instanceof Extended) {
+				RecordUtils.getInstance().releaseRecord(data);
 			}
 		} catch (SplitRequiredException e) {
 			throw e;
@@ -230,6 +251,7 @@ public class BTreeImpl implements BTree {
 			}
 			CacheEntryPinner.getInstance().unpin(findPinnedBlocks, findPinnedBlocks);
 		}
+		return data;
 	}
 	
 	private void removeRebalance(IndexBlock removeBlock, Set<IndexBlock> changedBlocks, Set<Object> pinnedBlocks, TransactionId txnId) {
@@ -268,7 +290,8 @@ public class BTreeImpl implements BTree {
 		
 		while (blockToRemove != null) {
 			parent = (IndexBlock) BlockManager.getInstance().getBlock(blockToRemove.getParent(), meta, pinnedBlocks);
-			if (parent == null) {
+			if (parent == null && blockToRemove instanceof IndexBranchBlock) {
+				FreeBlockFactory.getInstance().returnBlock(blockToRemove.getPtr());
 				IndexLeafBlock rootBlock = (IndexLeafBlock) BlockManager.getInstance().createIndexBlock(root.getFileId(), pinnedBlocks);
 				root = rootBlock.getPtr();
 				head = rootBlock.getPtr();
@@ -304,6 +327,9 @@ public class BTreeImpl implements BTree {
 			}
 			
 			parent.getData().remove(posn);
+			if (posn == parent.getData().size()) {
+				updateMaxKey(parent, pinnedBlocks);
+			}
 
 			if (parent.getData().size() == 0) {
 				blockToRemove = parent;
@@ -328,7 +354,7 @@ public class BTreeImpl implements BTree {
 		block.setMaxKey(maxKey);		
 	}
 	
-	private void insertRebalance(IndexBlock block, Set<Block> changedBlocks, Set<Object> pinnedBlocks) {
+	private void insertRebalance(IndexBlock block, Set<Block> changedBlocks, Set<Object> pinnedBlocks, Stack<BlockPtr> callBlockStack) {
 		List<IndexBlock> splitBlocks = null;
 		IndexBlock blockToSplit = block;
 		IndexBlock parent = null;
@@ -375,7 +401,7 @@ public class BTreeImpl implements BTree {
 				changedBlocks.add(parent);
 				
 				if (posn < 0) {
-					Logger.getLogger(getClass()).fatal("insert postion is -ve during removeRebalance");
+					Logger.getLogger(getClass()).fatal("insert postion is -ve during inserrtRebalance");
 				}
 				
 				if (posn+1 >= parent.getData().size()) {
@@ -408,12 +434,13 @@ public class BTreeImpl implements BTree {
 	public ResultIterator find(IndexQuery entry, boolean writeLock, Set<Object> pBlocks) {
 		Set<Object> pinnedBlocks = new HashSet<Object>();
 		ResultIterator iter = null;
+		Stack<BlockPtr> stack = new Stack<>();
 		try {
 			readLock();
 			BlockEntryPosition bep = null;
 			IndexBlock rootBlock = (IndexBlock) BlockManager.getInstance().getBlock(root, meta, pinnedBlocks);
 			if (root != null) {
-				bep = rootBlock.find(entry, writeLock, pinnedBlocks);
+				bep = rootBlock.find(entry, writeLock, pinnedBlocks, stack);
 			}
 			
 			iter = new BTreeIteratorImpl(bep, this, writeLock, false, meta);
@@ -479,9 +506,10 @@ public class BTreeImpl implements BTree {
 			} else {
 				writeLock();
 			}
+			Stack<BlockPtr> callBlockStack = new Stack<>();
 			try {
 				IndexBlock rootBlock = (IndexBlock) BlockManager.getInstance().getBlock(root, meta, pinnedBlocks);
-				bep = rootBlock.find(query, true, findPinnedBlocks);
+				bep = rootBlock.find(query, true, findPinnedBlocks, callBlockStack);
 				iter = new BTreeIteratorImpl(bep, this, true, changedBlocks, !readLock, meta);
 				DBType column = null;
 				if (iter.hasNext()) {
@@ -499,6 +527,11 @@ public class BTreeImpl implements BTree {
 				int maxSize = maxBlockSize - BlockSerilizer.INDEX_BLOCK_HEADER - SerializedBlockImpl.HEADER_SIZE;
 				if (recordSize >= maxSize) {
 					record = (IndexRecord) RecordUtils.getInstance().convertToExtended(record, findPinnedBlocks, meta, maxSize, root.getFileId());						
+				}
+				IndexBlock ib = (IndexBlock) iter.getCurrentBlock();
+				IndexKeyType blockMaxKey = (IndexKeyType) ib.getMaxKey(meta);
+				if (ib.getNext() != null && blockMaxKey.compareTo(data) < 0) {
+					Logger.getLogger(getClass()).fatal("insertint at the end");
 				}
 				iter.insert(record);					
 				changedBlockIter = changedBlocks.iterator();					
@@ -519,7 +552,7 @@ public class BTreeImpl implements BTree {
 					int size = BlockSerilizer.getInstance().getBlockSize(changedBlock, meta);
 					if (SplitFactory.getInstance().isSplitRequired(changedBlock, size, meta)) {
 						BlockPtr currentRoot = root;
-						insertRebalance((IndexBlock) changedBlock, changedBlocks, pinnedBlocks);
+						insertRebalance((IndexBlock) changedBlock, changedBlocks, pinnedBlocks, callBlockStack);
 						if (!root.equals(currentRoot)) {
 							Block headBlock = BlockManager.getInstance().getBlock(head, meta, findPinnedBlocks);
 							updateHeadRoot(headBlock, treeHead, root, txnId);

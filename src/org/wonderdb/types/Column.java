@@ -14,24 +14,22 @@ public class Column implements DBType {
 		this.value = value;
 	}
 	
-	public DBType getValue() {
-		return value;
-	}
-	
+//	public DBType getValue() {
+//		return value;
+//	}
+//	
 	public void setValue(DBType o) {
 		value = o;
 	}
 
 	@Override
 	public int compareTo(DBType o) {
-		Column c = null;
+		DBType oValue = o;
 		if (o instanceof Column) {
-			c = (Column) o;
-		} else {
-			return 1;
+			oValue = ((Column) o).value;
 		}
 		
-		return this.value.compareTo(c.value);
+		return this.value.compareTo(oValue);
 	}
 
 	@Override
