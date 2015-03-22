@@ -341,8 +341,8 @@ public class WonderDBList {
 				tailBlock.setNext(list.get(0).getPtr());
 				SerializedBlockImpl serializedBlock = (SerializedBlockImpl) secondaryCacheHandler.get(tail);
 				BlockSerilizer.getInstance().serialize(tailBlock, meta, txnId);
-//				secondaryCacheHandler.changed(tail);
-//				updateTail(head, tailList, pinnedBlocks, txnId);
+				secondaryCacheHandler.changed(tail);
+				updateTail(head, tailList, pinnedBlocks, txnId);
 				
 				LogManager.getInstance().logBlock(txnId, serializedBlock);
 				
@@ -379,10 +379,10 @@ public class WonderDBList {
 		
 	}
 
-//	private void updateTail(BlockPtr ptr, List<BlockPtr> tailList, Set<Object> pinnedBlocks, TransactionId txnId) {
-//		ListBlock block = (ListBlock) BlockManager.getInstance().getBlock(ptr, new ColumnSerializerMetadata(SerializerManager.BLOCK_PTR_LIST_TYPE), pinnedBlocks);
-//		updateTail(block, tailList, pinnedBlocks, txnId);
-//	}
+	private void updateTail(BlockPtr ptr, List<BlockPtr> tailList, Set<Object> pinnedBlocks, TransactionId txnId) {
+		ListBlock block = (ListBlock) BlockManager.getInstance().getBlock(ptr, new ColumnSerializerMetadata(SerializerManager.BLOCK_PTR_LIST_TYPE), pinnedBlocks);
+		updateTail(block, tailList, pinnedBlocks, txnId);
+	}
 
 	private void serializeMinimum(Block block, TypeMetadata meta,TransactionId txnId) {
 		SerializedBlockImpl serializedBlock = (SerializedBlockImpl) secondaryCacheHandler.get(block.getPtr());

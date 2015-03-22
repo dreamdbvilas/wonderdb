@@ -34,6 +34,7 @@ public class IndexLeafBlock extends BaseIndexBlock {
 			readLock();
 		}
 		int posn = findPosn(entry, writeLock, pinnedBlocks, stack);
+		stack.pop();
 		return new BlockEntryPosition(this, posn);
 	}
 }

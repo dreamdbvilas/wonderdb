@@ -67,7 +67,8 @@ public class BlockSerilizer  {
 		buffer.writeInt(0); //reserved
 		
 		if (header.isIndexBlock() || header.isIndexBranchBlock()) {
-			Serializer.getInstance().serialize(SerializerManager.BLOCK_PTR, block.getParent(), buffer, meta);
+//			Serializer.getInstance().serialize(SerializerManager.BLOCK_PTR, block.getParent(), buffer, meta);
+			Serializer.getInstance().serialize(SerializerManager.BLOCK_PTR, null, buffer, meta);
 		} else {
 			int maxPosn = ((ListBlock) block).getMaxPosn();
 			buffer.writeInt(maxPosn);

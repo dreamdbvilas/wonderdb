@@ -1,6 +1,7 @@
 package org.wonderdb.block;
 
 import java.util.List;
+import java.util.Stack;
 
 import org.wonderdb.cache.Cacheable;
 import org.wonderdb.types.BlockPtr;
@@ -25,7 +26,7 @@ import org.wonderdb.types.record.Record;
 public interface Block extends Cacheable<BlockPtr, List<Record>> {
 	BlockPtr getNext();
 	BlockPtr getPrev();
-	BlockPtr getParent();
+	BlockPtr getParent(Stack<BlockPtr> stack);
 	
 	void setNext(BlockPtr n);
 	void setPrev(BlockPtr p);

@@ -7,7 +7,10 @@ import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Random;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 
 import org.apache.log4j.BasicConfigurator;
 import org.apache.log4j.PropertyConfigurator;
@@ -30,8 +33,10 @@ import org.wonderdb.serialize.ColumnSerializer;
 import org.wonderdb.serialize.SerializerManager;
 import org.wonderdb.serialize.record.RecordSerializer;
 import org.wonderdb.server.WonderDBCacheService;
+import org.wonderdb.server.WonderDBPropertyManager;
 import org.wonderdb.txnlogger.LogManager;
 import org.wonderdb.txnlogger.TransactionId;
+import org.wonderdb.types.BlockPtr;
 import org.wonderdb.types.ByteArrayType;
 import org.wonderdb.types.ColumnSerializerMetadata;
 import org.wonderdb.types.DBType;
@@ -44,6 +49,9 @@ import org.wonderdb.types.record.IndexRecord;
 import org.wonderdb.types.record.TableRecord;
 
 public class CacheManager {
+	static Random random = new Random(System.currentTimeMillis());
+	static ConcurrentMap<Integer, Integer> map = new ConcurrentHashMap<>();
+	
 	private static CacheManager instance = new CacheManager();
 	static {
 		File file = new File("./log4j.properties");
@@ -174,6 +182,89 @@ public class CacheManager {
 	
 	public static void main(String[] args) throws Exception {
 		WonderDBCacheService.getInstance().init(args[0]);
+		TestRunnable r1 = new TestRunnable();
+		TestRunnable r2 = new TestRunnable();
+		TestRunnable r3 = new TestRunnable();
+		TestRunnable r4 = new TestRunnable();
+		TestRunnable r5 = new TestRunnable();
+		
+		Thread t1 = new Thread(r1);
+		Thread t2 = new Thread(r2);
+		Thread t3 = new Thread(r3);
+		Thread t4 = new Thread(r4);
+		Thread t5 = new Thread(r5);
+		
+		t1.start();
+		t2.start();
+		t3.start();
+		t4.start();
+		t5.start();
+//
+		t1.join();
+		t2.join();
+		t3.join();
+		t4.join();
+		t5.join();
+		
+		
+		Set<Object> pinnedBlocks = new HashSet<>();
+		WonderDBList dbList = SchemaMetadata.getInstance().getCollectionMetadata("cache").getRecordList(new Shard(""));
+		TypeMetadata meta = SchemaMetadata.getInstance().getTypeMetadata("cache");
+		ResultIterator iter = dbList.iterator(meta, pinnedBlocks);
+		int i = 0;
+		
+		while (iter.hasNext()) {
+			System.out.println("record read" + i++);
+			if (i == 4429) {
+				int x = 0;
+				x = 20;
+			}
+			TableRecord record = (TableRecord) iter.next();
+			DBType dt = record.getColumnMap().get(1);
+			ByteArrayType bat = null;
+			if (dt instanceof ExtendedColumn) {
+				ColumnSerializer.getInstance().readFull(dt, new ColumnSerializerMetadata(SerializerManager.BYTE_ARRAY_TYPE));
+				bat = (ByteArrayType) ((ExtendedColumn) dt).getValue(null);
+			} else if (record instanceof ExtendedTableRecord) {
+				RecordSerializer.getInstance().readFull(record, meta);
+				bat = (ByteArrayType) record.getValue(1);
+			} else {
+				bat = (ByteArrayType) dt;
+			}
+			byte[] value = bat.get();
+		}
+		iter.unlock(true);
+		CacheEntryPinner.getInstance().unpin(pinnedBlocks, pinnedBlocks);
+		System.out.println("total records : " + i);
+		
+		
+		IndexNameMeta inm = SchemaMetadata.getInstance().getIndex("cacheIndex");
+		BTree tree = inm.getIndexTree(new Shard(""));
+		iter = tree.getHead(false, pinnedBlocks);
+		IndexKeyType prev = null;
+		int x = 0;
+		while (iter.hasNext()) {
+			IndexRecord record = (IndexRecord) iter.next();
+			IndexKeyType ikt = (IndexKeyType) record.getColumn();
+			System.out.println("Read: " + new String(((ByteArrayType) ikt.getValue().get(0)).get()));
+			if (prev != null) {
+				if (ikt.compareTo(prev) <= 0) {
+					i = 0;
+					i = 20;
+				}
+			}
+//			System.out.println(x);
+			x++;
+			prev = ikt;
+		}
+		iter.unlock(true);
+		System.out.println("total: " + x);
+		WonderDBCacheService.getInstance().shutdown();
+
+	}	
+	
+	public static void main1(String[] args) throws Exception {
+		WonderDBCacheService.getInstance().init(args[0]);
 		StringBuilder sb = new StringBuilder();
 		for (int i = 0; i < 1000; i++) {
 			sb.append("b");
@@ -283,5 +374,25 @@ public class CacheManager {
 		byte[] values = CacheManager.getInstance().get("123".getBytes());
 		System.out.println("value is: " + values +"done");
 		WonderDBCacheService.getInstance().shutdown();
+	}
+	
+	public static class TestRunnable implements Runnable {
+
+		@Override
+		public void run() {
+			for (int i = 0; i < 1000; i++) {
+				int key = Math.abs(random.nextInt()) % 100000;
+				int size = Math.abs(random.nextInt()) % 1000;
+//				int size = 1000;
+				byte[] bytes = new byte[size+1];
+				byte[] k = new String(""+key).getBytes();
+				Integer x = new Integer(key);
+				synchronized (x) {
+					CacheManager.getInstance().set(k, bytes);
+					map.put(key, bytes.length);
+				}
+			}
+			
+		}		
 	}
 }

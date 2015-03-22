@@ -18,6 +18,7 @@ package org.wonderdb.block;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Stack;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 import org.wonderdb.types.BlockPtr;
@@ -57,7 +58,7 @@ public abstract class BaseBlock implements Block {
 		this.prevPtr = n != null ? (BlockPtr) n.clone() : null;
 	}
 	
-	public BlockPtr getParent() {
+	public BlockPtr getParent(Stack<BlockPtr> stack) {
 		throw new RuntimeException("Method not supported");
 	}
 	

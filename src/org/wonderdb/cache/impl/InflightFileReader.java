@@ -65,7 +65,7 @@ public class InflightFileReader implements InflightReads<BlockPtr, ChannelBuffer
 					while (block == null) {
 						try {
 							p.wait(10);
-							break;
+//							break;
 						} catch (InterruptedException e) {
 						}
 					block = secondaryCacheHandler.getFromCache(p);

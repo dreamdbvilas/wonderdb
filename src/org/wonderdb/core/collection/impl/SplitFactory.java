@@ -112,7 +112,7 @@ public class SplitFactory {
 
 		setMaxKey(block, meta, pinnedBlocks);
 		
-		BlockPtr parentPtr = block.getParent();
+//		BlockPtr parentPtr = block.getParent(stack);
 		
 		if (splitList.size() > 2) {
 			Logger.getLogger(getClass()).fatal("split more");
@@ -131,7 +131,7 @@ public class SplitFactory {
 			tmpBlock.getData().addAll(splitList.get(i));
 			retList.add(tmpBlock);
 			changedBlocks.add(tmpBlock);
-			tmpBlock.setParent(parentPtr);
+//			tmpBlock.setParent(parentPtr);
 			setMaxKey(tmpBlock, meta, pinnedBlocks);
 			if (!branchBlock) {
 				IndexLeafBlock nextBlock = (IndexLeafBlock) BlockManager.getInstance().getBlock(block.getNext(), meta, pinnedBlocks);
@@ -148,7 +148,7 @@ public class SplitFactory {
 					CacheEntryPinner.getInstance().pin(p, pinnedBlocks);
 					Block b = BlockManager.getInstance().getBlock(p, meta, pinnedBlocks);
 					b.setParent(tmpBlock.getPtr());
-					changedBlocks.add(b);
+//					changedBlocks.add(b);
 				}
 			}
 		}

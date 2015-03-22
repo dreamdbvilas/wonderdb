@@ -109,8 +109,8 @@ public abstract class BaseIndexBlock extends BaseBlock
 		}
 	}
 	
-	public BlockPtr getParent() {
-		return parentPtr;
+	public BlockPtr getParent(Stack<BlockPtr> stack) {
+		return stack.isEmpty() ? null : stack.pop();
 	}
 	
 	public void setParent(BlockPtr ptr) {

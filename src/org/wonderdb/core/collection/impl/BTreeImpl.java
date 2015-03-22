@@ -217,7 +217,7 @@ public class BTreeImpl implements BTree {
 				// split
 				Set<IndexBlock> changedBlocks = new HashSet<>();
 				changedBlocks.add(changedBlock);
-				removeRebalance(changedBlock, changedBlocks, findPinnedBlocks, txnId);
+				removeRebalance(changedBlock, changedBlocks, findPinnedBlocks, txnId, callBlockStack);
 				
 				Iterator<IndexBlock> iter1 = changedBlocks.iterator();
 				while (iter1.hasNext()) {
@@ -254,17 +254,17 @@ public class BTreeImpl implements BTree {
 		return data;
 	}
 	
-	private void removeRebalance(IndexBlock removeBlock, Set<IndexBlock> changedBlocks, Set<Object> pinnedBlocks, TransactionId txnId) {
+	private void removeRebalance(IndexBlock removeBlock, Set<IndexBlock> changedBlocks, Set<Object> pinnedBlocks, TransactionId txnId, Stack<BlockPtr> stack) {
 		BlockPtr currentTreeHead = treeHead;
 		BlockPtr currentRoot = root;
-		removeRebalance(removeBlock, changedBlocks, pinnedBlocks);
+		removeRebalance(removeBlock, changedBlocks, pinnedBlocks, stack);
 		if (currentRoot != root || currentTreeHead != treeHead) {
 			Block headBlock = BlockManager.getInstance().getBlock(head, meta, pinnedBlocks);
 			updateHeadRoot(headBlock, treeHead, root, txnId);
 		}
 	}
 	
-	private void removeRebalance(IndexBlock removeBlock, Set<IndexBlock> changedBlocks, Set<Object> pinnedBlocks) {
+	private void removeRebalance(IndexBlock removeBlock, Set<IndexBlock> changedBlocks, Set<Object> pinnedBlocks, Stack<BlockPtr> stack) {
 		IndexBlock blockToRemove = removeBlock;
 		IndexBlock parent = null;
 		IndexBlock prevBlock = null;
@@ -289,7 +289,7 @@ public class BTreeImpl implements BTree {
 		}
 		
 		while (blockToRemove != null) {
-			parent = (IndexBlock) BlockManager.getInstance().getBlock(blockToRemove.getParent(), meta, pinnedBlocks);
+			parent = (IndexBlock) BlockManager.getInstance().getBlock(blockToRemove.getParent(stack), meta, pinnedBlocks);
 			if (parent == null && blockToRemove instanceof IndexBranchBlock) {
 				FreeBlockFactory.getInstance().returnBlock(blockToRemove.getPtr());
 				IndexLeafBlock rootBlock = (IndexLeafBlock) BlockManager.getInstance().createIndexBlock(root.getFileId(), pinnedBlocks);
@@ -363,7 +363,7 @@ public class BTreeImpl implements BTree {
 			splitBlocks = SplitFactory.getInstance().split(blockToSplit, changedBlocks, pinnedBlocks, meta);
 			
 			changedBlocks.addAll(splitBlocks);
-			parent = (IndexBlock) BlockManager.getInstance().getBlock(blockToSplit.getParent(), meta, pinnedBlocks); 
+			parent = (IndexBlock) BlockManager.getInstance().getBlock(blockToSplit.getParent(callBlockStack), meta, pinnedBlocks); 
 			IndexBlock newRoot = null;
 			
 			if (parent == null) {
