@@ -34,16 +34,16 @@ public class BlockSerilizer  {
 
 	private static final int BLOCK_HEADER = SerializedBlockImpl.HEADER_SIZE + 
 			1 /* block header */ + 
-			(1 + Long.BYTES) /* prev pointer */ + 
-			(1 + Long.BYTES) /* next pointer */ + 
-			Integer.BYTES /* reserved */ +
-			Integer.BYTES /* record list size */;
+			(1 + Long.SIZE/8) /* prev pointer */ + 
+			(1 + Long.SIZE/8) /* next pointer */ + 
+			Integer.SIZE/8 /* reserved */ +
+			Integer.SIZE/8 /* record list size */;
 	
 	public static final int INDEX_BLOCK_HEADER = BLOCK_HEADER + 
-			(1 + Long.BYTES) /* parent pointer */;
+			(1 + Long.SIZE/8) /* parent pointer */;
 	
 	public static final int LIST_BLOCK_HEADER = BLOCK_HEADER + 
-			Integer.BYTES /* max posn */;
+			Integer.SIZE/8 /* max posn */;
 	
 	private static BlockSerilizer instance = new BlockSerilizer();
 	

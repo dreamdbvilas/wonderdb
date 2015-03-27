@@ -9,8 +9,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.BlockingDeque;
+import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.Callable;
 import java.util.concurrent.LinkedBlockingDeque;
+import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -67,6 +69,8 @@ public class WonderDBList {
 	BlockPtr tail = null;
 
 	BlockingDeque<BlockPtr> queue = null;
+	BlockingQueue<BlockPtr> queueCopy = new LinkedBlockingQueue<BlockPtr>();
+
 	int lowWatermark = 0;
 
 	int maxBlockSize = -1;
@@ -101,12 +105,13 @@ public class WonderDBList {
 		Block tailBlock = BlockManager.getInstance().createListBlock(head.getFileId(), pinnedBlocks);
 		headBlock.setNext(tailBlock.getPtr());
 		tailBlock.setPrev(head);
-		List<BlockPtr> tailList = new ArrayList<>();
+		List<BlockPtr> tailList = new ArrayList<BlockPtr>();
 		tailList.add(tailBlock.getPtr());
 		WonderDBList retList = new WonderDBList(id, head, tailList, concurrentSize);
 		retList.updateTail((ListBlock) headBlock, tailList, pinnedBlocks, txnId);	
-		
 		retList.serializeMinimum(tailBlock, null, txnId);
+		
+		retList.tailExtender.extend();
 		return retList;
 	}
 	
@@ -130,7 +135,7 @@ public class WonderDBList {
 		int maxSize = (int) (maxBlockSize * 0.8);
 		if (record instanceof TableRecord) {
 			blockableRecord = RecordUtils.getInstance().convertToExtended((TableRecord) record, pinnedBlocks, meta, maxSize, 0, head.getFileId());
-			changedColumnIds = new ArrayList<>(((TableRecord) blockableRecord).getColumnMap().keySet());
+			changedColumnIds = new ArrayList<Integer>(((TableRecord) blockableRecord).getColumnMap().keySet());
 		} else if (record instanceof ObjectListRecord) {
 			blockableRecord = (ObjectListRecord) RecordUtils.getInstance().convertToExtended((ObjectRecord) record, pinnedBlocks, meta, maxSize, head.getFileId());
 		}
@@ -179,7 +184,7 @@ public class WonderDBList {
 //			int newConsumedResources = RecordUtils.getInstance().getConsumedResources(oldRecord);
 //			primaryResourceProvider.getResource(block.getPtr(), newConsumedResources-consumedResources);
 			if (oldRecord instanceof TableRecord) {
-				changedColumnIds = new ArrayList<>(((TableRecord) oldRecord).getColumnMap().keySet());
+				changedColumnIds = new ArrayList<Integer>(((TableRecord) oldRecord).getColumnMap().keySet());
 			}
 			serializeRecord(oldRecord, changedColumnIds, pinnedBlocks, txnId, meta);
 			block.adjustResourceCount(newRecord.getResourceCount() - oldRecord.getResourceCount());
@@ -236,18 +241,22 @@ public class WonderDBList {
 	}
 	
 	private class TailExtender {
-		
-		private TailExtender(List<BlockPtr> tailList) {
-			queue = new LinkedBlockingDeque<>();
-			queue.addAll(tailList);
-			lowWatermark = (int) 0.5 * concurrentSize;
 			
-			if (thrownBlocks.get() >= concurrentSize-lowWatermark) {
+		private TailExtender(List<BlockPtr> tailList) {
+			queue = new LinkedBlockingDeque<BlockPtr>();
+			queue.addAll(tailList);
+			lowWatermark = (int) (0.5 * concurrentSize);
+			queueCopy.addAll(tailList);
+		}
+		
+		public void extend() {
+			if (queue.size() < concurrentSize) {
 				if (extendingTail.compareAndSet(false, true)) {
-					ExtendTailTask task = new ExtendTailTask(queue.remainingCapacity());
+					thrownBlocks.set(concurrentSize-queue.size());
+					ExtendTailTask task = new ExtendTailTask(concurrentSize-queue.size());
 					threadPoolExecutor.asynchrounousExecute(task);
 				}
-			}
+			}			
 		}
 		
 		public Block getBlock(int requiredSize, Set<Object> pinnedBlocks, TypeMetadata meta) {
@@ -259,12 +268,13 @@ public class WonderDBList {
 					// TODO Auto-generated catch block
 					e.printStackTrace();
 				}
-				if (ptr == null) {
+				if (thrownBlocks.get() > (concurrentSize-lowWatermark)) {
 					if (extendingTail.compareAndSet(false, true)) {
-						ExtendTailTask task = new ExtendTailTask(concurrentSize-lowWatermark);
+						ExtendTailTask task = new ExtendTailTask(thrownBlocks.get());
 						threadPoolExecutor.asynchrounousExecute(task);
 					}
-				} else {
+				} 
+				if (ptr != null) {
 					Block block = BlockManager.getInstance().getBlock(ptr, meta, pinnedBlocks);
 					boolean unlock = false;
 					block.writeLock();
@@ -273,6 +283,7 @@ public class WonderDBList {
 						if ((maxBlockSize*0.7) > (size + requiredSize)) {
 							return block;
 						} else {
+							queueCopy.remove(block.getPtr());
 							thrownBlocks.incrementAndGet();
 							unlock = true;
 						}
@@ -299,65 +310,69 @@ public class WonderDBList {
 		
 		@Override
 		public Boolean call() throws Exception {
-			TypeMetadata meta = SchemaMetadata.getInstance().getTypeMetadata(listId);
-			TransactionId txnId = LogManager.getInstance().startTxn();
-			Set<Object> pinnedBlocks = new HashSet<>();
-			List<Block> list = new ArrayList<>();
 			try {
-				
-				for (int i = 0; i < createAhead; i++) {
-					Block b = BlockManager.getInstance().createListBlock(head.getFileId(), pinnedBlocks);
-					list.add(b);
+				TypeMetadata meta = SchemaMetadata.getInstance().getTypeMetadata(listId);
+				TransactionId txnId = LogManager.getInstance().startTxn();
+				Set<Object> pinnedBlocks = new HashSet<Object>();
+				List<Block> list = new ArrayList<Block>();
+				try {
+					
+					for (int i = 0; i < createAhead; i++) {
+						Block b = BlockManager.getInstance().createListBlock(head.getFileId(), pinnedBlocks);
+						list.add(b);
+						queueCopy.add(b.getPtr());
+					}
+					
+					list.get(0).setPrev(tail);
+					for (int i = 1; i < list.size(); i++) {
+						Block currentBlock = list.get(i);
+						Block prevBlock = list.get(i-1);
+						prevBlock.setNext(currentBlock.getPtr());
+						currentBlock.setPrev(prevBlock.getPtr());
+					}
+					for (int i = 0; i < list.size(); i++) {
+						Block currentBlock = list.get(i);
+						CacheEntryPinner.getInstance().pin(currentBlock.getPtr(), pinnedBlocks);
+						BlockSerilizer.getInstance().serialize(currentBlock, meta, txnId);
+						secondaryCacheHandler.changed(currentBlock.getPtr());
+					}
+				} finally {
+					LogManager.getInstance().commitTxn(txnId);
+					CacheEntryPinner.getInstance().unpin(pinnedBlocks, pinnedBlocks);
+				}
+	
+				pinnedBlocks.clear();
+				List<BlockPtr> tailList = new ArrayList<BlockPtr>(queueCopy);
+	//			for (int i = 0; i < queueCopy.size(); i++) {
+	//				tailList.add(queueCopy.get(i).getPtr());
+	//			}
+				Block tailBlock = null;
+				txnId = LogManager.getInstance().startTxn();
+				try {
+					tailBlock = BlockManager.getInstance().getBlock(tail, meta, pinnedBlocks);
+					tailBlock.writeLock();
+					tailBlock.setNext(list.get(0).getPtr());
+					SerializedBlockImpl serializedBlock = (SerializedBlockImpl) secondaryCacheHandler.get(tail);
+					BlockSerilizer.getInstance().serialize(tailBlock, meta, txnId);
+					secondaryCacheHandler.changed(tail);
+					updateTail(head, tailList, pinnedBlocks, txnId);
+					
+					LogManager.getInstance().logBlock(txnId, serializedBlock);
+					
+				} finally {
+					LogManager.getInstance().commitTxn(txnId);
+					tailBlock.writeUnlock();
+					CacheEntryPinner.getInstance().unpin(pinnedBlocks, pinnedBlocks);
 				}
 				
-				list.get(0).setPrev(tail);
-				for (int i = 1; i < list.size(); i++) {
-					Block currentBlock = list.get(i);
-					Block prevBlock = list.get(i-1);
-					prevBlock.setNext(currentBlock.getPtr());
-					currentBlock.setPrev(prevBlock.getPtr());
-				}
+				tail = list.get(list.size()-1).getPtr();
 				for (int i = 0; i < list.size(); i++) {
-					Block currentBlock = list.get(i);
-					CacheEntryPinner.getInstance().pin(currentBlock.getPtr(), pinnedBlocks);
-					BlockSerilizer.getInstance().serialize(currentBlock, meta, txnId);
-					secondaryCacheHandler.changed(currentBlock.getPtr());
+					queue.add(list.get(i).getPtr());
 				}
+				thrownBlocks.getAndAdd(-1*createAhead);
 			} finally {
-				LogManager.getInstance().commitTxn(txnId);
-				CacheEntryPinner.getInstance().unpin(pinnedBlocks, pinnedBlocks);
+				extendingTail.set(false);
 			}
-
-			pinnedBlocks.clear();
-			List<BlockPtr> tailList = new ArrayList<>(list.size());
-			for (int i = 0; i < list.size(); i++) {
-				tailList.add(list.get(i).getPtr());
-			}
-			Block tailBlock = null;
-			txnId = LogManager.getInstance().startTxn();
-			try {
-				tailBlock = BlockManager.getInstance().getBlock(tail, meta, pinnedBlocks);
-				tailBlock.writeLock();
-				tailBlock.setNext(list.get(0).getPtr());
-				SerializedBlockImpl serializedBlock = (SerializedBlockImpl) secondaryCacheHandler.get(tail);
-				BlockSerilizer.getInstance().serialize(tailBlock, meta, txnId);
-				secondaryCacheHandler.changed(tail);
-				updateTail(head, tailList, pinnedBlocks, txnId);
-				
-				LogManager.getInstance().logBlock(txnId, serializedBlock);
-				
-			} finally {
-				LogManager.getInstance().commitTxn(txnId);
-				tailBlock.writeUnlock();
-				CacheEntryPinner.getInstance().unpin(pinnedBlocks, pinnedBlocks);
-			}
-			
-			tail = list.get(list.size()-1).getPtr();
-			thrownBlocks.set(0);
-			for (int i = 0; i < list.size(); i++) {
-				queue.add(list.get(i).getPtr());
-			}
-			extendingTail.set(false);
 			return true;
 		}
 	}

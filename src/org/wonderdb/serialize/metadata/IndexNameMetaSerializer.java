@@ -72,11 +72,11 @@ public class IndexNameMetaSerializer implements TypeSerializer {
 	@Override
 	public int getSize(DBType object, TypeMetadata meta) {
 		IndexNameMeta inm = (IndexNameMeta) object;
-		int size = Integer.BYTES;
+		int size = Integer.SIZE/8;
 		size = size + Serializer.getInstance().getObjectSize(SerializerManager.STRING, new StringType(inm.getCollectionName()), meta);
 		size = size + Serializer.getInstance().getObjectSize(SerializerManager.STRING, new StringType(inm.getIndexName()), meta);
-		size = size + Integer.BYTES;
-		size = size + inm.getColumnIdList().size()*Integer.BYTES;
+		size = size + Integer.SIZE/8;
+		size = size + inm.getColumnIdList().size()*Integer.SIZE/8;
 		size = size + Serializer.getInstance().getObjectSize(SerializerManager.BLOCK_PTR, inm.getHead(), meta);
 		size = size + 1;
 		size = size + 1;

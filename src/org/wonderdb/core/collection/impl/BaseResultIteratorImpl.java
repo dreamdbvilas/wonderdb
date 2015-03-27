@@ -48,7 +48,7 @@ public abstract class BaseResultIteratorImpl implements ResultIterator {
 		this.meta = meta;
 		lockedBlocks = new ArrayList<Block>();
 		writeLockBlock = blockWriteLock;
-		this.pinnedBlocks = new HashSet<>();
+		this.pinnedBlocks = new HashSet<Object>();
 		this.changedBlocks = changedBlocks;
 		if (bep == null || bep.getBlock() == null) {
 			return;

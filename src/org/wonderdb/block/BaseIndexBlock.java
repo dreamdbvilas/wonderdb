@@ -61,7 +61,7 @@ public abstract class BaseIndexBlock extends BaseBlock
 					maxKey = null;
 					return null;
 				} else {
-					Set<Object> pinnedBlocks = new HashSet<>();
+					Set<Object> pinnedBlocks = new HashSet<Object>();
 					try {
 						Record record = list.get(list.size()-1);
 						DBType value = null;

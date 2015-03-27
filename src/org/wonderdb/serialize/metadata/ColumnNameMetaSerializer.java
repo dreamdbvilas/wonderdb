@@ -54,10 +54,10 @@ public class ColumnNameMetaSerializer implements TypeSerializer {
 	public int getSize(DBType object, TypeMetadata meta) {
 		ColumnNameMeta cnm = (ColumnNameMeta) object;
 
-		int size = Integer.BYTES;
+		int size = Integer.SIZE/8;
 		size = size + Serializer.getInstance().getObjectSize(SerializerManager.STRING, new StringType(cnm.getColumnName()), meta);
 		size = size + Serializer.getInstance().getObjectSize(SerializerManager.STRING, new StringType(cnm.getCollectioName()), meta);
-		size = size + Integer.BYTES;
+		size = size + Integer.SIZE/8;
 		size = size + 1;
 		
 		return size;

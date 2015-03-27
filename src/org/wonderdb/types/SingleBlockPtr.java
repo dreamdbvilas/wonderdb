@@ -76,6 +76,6 @@ public class SingleBlockPtr implements BlockPtr, Serializable {
 
 	@Override
 	public int getSize() {
-		return 1 + Long.BYTES;
+		return 1 + Long.SIZE/8;
 	}
 }

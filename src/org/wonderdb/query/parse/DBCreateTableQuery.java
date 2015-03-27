@@ -48,8 +48,8 @@ public class DBCreateTableQuery extends BaseDBQuery {
 		}
 		collectionName = node.jjtGetFirstToken().image;
 		
-		List<SimpleNode> columnNameNodeList = new ArrayList<>();
-		List<SimpleNode> columnTypeNodeList = new ArrayList<>();
+		List<SimpleNode> columnNameNodeList = new ArrayList<SimpleNode>();
+//		List<SimpleNode> columnTypeNodeList = new ArrayList<SimpleNode>();
 		
 		SimpleNodeHelper.getInstance().getNodes(query, UQLParserTreeConstants.JJTTABLECOLUMNNAME, columnNameNodeList);
 		

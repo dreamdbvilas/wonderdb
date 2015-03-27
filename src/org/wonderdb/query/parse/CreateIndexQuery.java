@@ -48,7 +48,7 @@ import org.wonderdb.types.record.ObjectListRecord;
 public class CreateIndexQuery extends BaseDBQuery {
 	String idxName;
 	String collectionName;
-	List<String> colList = new ArrayList<>();
+	List<String> colList = new ArrayList<String>();
 	boolean unique = false;
 	String storageName = null;
 	
@@ -67,7 +67,7 @@ public class CreateIndexQuery extends BaseDBQuery {
 		}
 		collectionName = node.jjtGetFirstToken().image;
 		
-		List<SimpleNode> colNameNodes = new ArrayList<>();
+		List<SimpleNode> colNameNodes = new ArrayList<SimpleNode>();
 		SimpleNodeHelper.getInstance().getNodes(query, UQLParserTreeConstants.JJTIDENTIFIER, colNameNodes);
 		if (colNameNodes.size() <= 0) {
 			throw new RuntimeException("Invalid syntax");
@@ -101,7 +101,7 @@ public class CreateIndexQuery extends BaseDBQuery {
 	
 	public void execute() throws InvalidCollectionNameException, InvalidIndexException {
 		List<Integer> idxColumns = new ArrayList<Integer>();
-		List<ColumnNameMeta> collectionColumns = new ArrayList<>();
+		List<ColumnNameMeta> collectionColumns = new ArrayList<ColumnNameMeta>();
 		CollectionMetadata colMeta = SchemaMetadata.getInstance().getCollectionMetadata(collectionName);
 		if (colMeta == null) {
 			throw new InvalidIndexException("collection not created..." + collectionName);
@@ -120,7 +120,7 @@ public class CreateIndexQuery extends BaseDBQuery {
 		}
 
 		List<ColumnNameMeta> newColumns = colMeta.addColumns(collectionColumns);
-		Set<Object> pinnedBlocks = new HashSet<>();
+		Set<Object> pinnedBlocks = new HashSet<Object>();
 		WonderDBList dbList = SchemaMetadata.getInstance().getCollectionMetadata(collectionName).getRecordList(new Shard(""));
 		if (newColumns.size() > 0) {
 			TransactionId txnId = LogManager.getInstance().startTxn();

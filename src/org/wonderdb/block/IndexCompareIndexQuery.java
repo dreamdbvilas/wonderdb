@@ -84,4 +84,14 @@ public class IndexCompareIndexQuery implements IndexQuery, Comparator<DBType> {
 		}
 		return -1;
 	}
+
+	@Override
+	public int hashCode() {
+		throw new RuntimeException("Method not supported");
+	}
+	
+	@Override
+	public boolean equals(Object o) {
+		throw new RuntimeException("Method not supported");
+	}
 }

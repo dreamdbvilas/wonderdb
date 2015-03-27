@@ -24,7 +24,7 @@ import org.wonderdb.types.BlockPtr;
 
 public class SerializedBlockImpl implements Cacheable<BlockPtr, ChannelBuffer> {
 
-	public static final int HEADER_SIZE = 1 + Long.BYTES + Long.BYTES;
+	public static final int HEADER_SIZE = 1 + Long.SIZE/8 + Long.SIZE/8;
 	
 	BlockPtr ptr = null;
 	long lastAccessTime = -1;

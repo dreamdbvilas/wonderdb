@@ -73,6 +73,7 @@ public class IntType implements DBType {
 		return 0;
 	}
 	
+	@Override
 	public boolean equals(Object o) {
 		if (o instanceof IntType) {
 			return this.compareTo((IntType) o) == 0;
@@ -80,32 +81,8 @@ public class IntType implements DBType {
 		return false;
 	}	
 	
-	public static void main(String[] args) {
-		List<Integer> list = new ArrayList<>();
-
-		list.add(10);
-		list.add(20);
-		list.add(30);
-		list.add(40);
-		list.add(50);
-		list.add(60);
-		list.add(70);
-		list.add(80);
-		list.add(90);
-		list.add(100);
-
-		int i = Collections.binarySearch(list, 40, new MyComparator());
-		int x = 20;
-		
-	}
-	
-	private static class MyComparator implements Comparator<Integer> {
-
-		@Override
-		public int compare(Integer o1, Integer o2) {
-			int c = o1.compareTo(o2);
-			return c;
-		}
-		
+	@Override
+	public int hashCode() {
+		return value == null ? 0 : value.hashCode();
 	}
 }

@@ -34,6 +34,7 @@ public class StringType implements DBType {
 		return value;
 	}
 	
+	@Override
 	public int compareTo(DBType t) {
 		StringType st = null;
 		if (t instanceof StringType) {
@@ -79,25 +80,21 @@ public class StringType implements DBType {
 		return value.compareTo(i);
 	}
 
+	@Override
 	public String toString() {
 		return value;
 	}
 	
+	@Override
 	public boolean equals(Object o) {
 		if (o instanceof StringType) {
 			return this.compareTo((StringType) o) == 0;
 		}
 		return false;
 	}
-	
-	public static void main(String[] args) {
-		StringType l = new StringLikeType("vilas");
-		StringType r = new StringLikeType("");
-		
-		int i = l.compareTo(r);
-		System.out.println(i);
-		
-		i = r.compareTo(l);
-		System.out.println(i);
+
+	@Override
+	public int hashCode() {
+		return value == null ? 0 : value.hashCode();
 	}
 }

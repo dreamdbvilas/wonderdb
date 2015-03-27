@@ -36,7 +36,7 @@ public class CollectionMetadata  {
 	}
 
 	ConcurrentMap<Integer, ColumnNameMeta> columnIdToNameMap = new ConcurrentHashMap<Integer, ColumnNameMeta>();
-	ConcurrentMap<String, ColumnNameMeta> columnNameToIdMap = new ConcurrentHashMap<>();
+	ConcurrentMap<String, ColumnNameMeta> columnNameToIdMap = new ConcurrentHashMap<String, ColumnNameMeta>();
 	
 	ConcurrentMap<Shard, WonderDBList> shardRecordListMap = new ConcurrentHashMap<Shard, WonderDBList>();
 	WonderDBList dbList = null;
@@ -53,7 +53,7 @@ public class CollectionMetadata  {
 	}
 	
 	public synchronized List<ColumnNameMeta> getCollectionColumns() {
-		return new ArrayList<>(columnIdToNameMap.values());
+		return new ArrayList<ColumnNameMeta>(columnIdToNameMap.values());
 	}
 	
 	public List<ColumnNameMeta> addColumns(Collection<ColumnNameMeta> columns) {

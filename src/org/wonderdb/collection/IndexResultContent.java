@@ -59,7 +59,7 @@ public class IndexResultContent extends IndexRecord implements ResultContent {
 	
 	@Override
 	public Map<Integer, DBType> getAllColumns() {
-		Map<Integer, DBType> map = new HashMap<>();
+		Map<Integer, DBType> map = new HashMap<Integer, DBType>();
 		for (int i = 0; i < meta.getColumnIdList().size(); i++) {
 			map.put(meta.getColumnIdList().get(i), ikt.getValue().get(i));
 		}

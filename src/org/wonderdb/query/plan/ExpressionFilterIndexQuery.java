@@ -143,6 +143,16 @@ public  class ExpressionFilterIndexQuery implements IndexQuery, Comparator<DBTyp
 		}
 		return 0;
 	}
+	
+	@Override
+	public int hashCode() {
+		throw new RuntimeException("Method not supported");
+	}
+	
+	@Override
+	public boolean equals(Object o) {
+		throw new RuntimeException("Method not supported");
+	}
 
 	@Override
 	public DBType copyOf() {

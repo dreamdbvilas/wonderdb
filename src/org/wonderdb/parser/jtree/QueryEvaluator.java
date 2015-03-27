@@ -33,7 +33,7 @@ import org.wonderdb.types.UndefinedType;
 public class QueryEvaluator {
 	DataContext context = null;
 //	CollectionAlias ca = null;
-	Map<String, CollectionAlias> aliasMap = new HashMap<>();
+	Map<String, CollectionAlias> aliasMap = new HashMap<String, CollectionAlias>();
 	
 	public QueryEvaluator(Map<String, CollectionAlias> aliasMap, DataContext dataContext) {
 		this.context = dataContext;

@@ -58,8 +58,8 @@ public class SimpleNodeHelper {
 	}
 	
 	public Map<String, CollectionAlias> getFromMap(SimpleNode root) {
-		Map<String, CollectionAlias> map = new HashMap<>();
-		List<SimpleNode> list = new ArrayList<>();
+		Map<String, CollectionAlias> map = new HashMap<String, CollectionAlias>();
+		List<SimpleNode> list = new ArrayList<SimpleNode>();
 		traverse(root, UQLParserTreeConstants.JJTTABLEDEF, list);
 		
 		for (int i = 0; i < list.size(); i++) {
@@ -120,8 +120,8 @@ public class SimpleNodeHelper {
 	}
 	
 	public List<TableDef> getTables(SimpleNode selectNode) {
-		List<TableDef> retList = new ArrayList<>();
-		List<SimpleNode> tableDefNodes = new ArrayList<>();
+		List<TableDef> retList = new ArrayList<TableDef>();
+		List<SimpleNode> tableDefNodes = new ArrayList<SimpleNode>();
 		getNodes(selectNode, UQLParserTreeConstants.JJTTABLEDEF, tableDefNodes);
 		
 		for (int i = 0; i < tableDefNodes.size(); i++) {
@@ -444,7 +444,7 @@ public class SimpleNodeHelper {
 //	}	
 	
 	public List<SimpleNode> breakAnds(SimpleNode compareNode) {
-		List<SimpleNode> retList = new ArrayList<>();
+		List<SimpleNode> retList = new ArrayList<SimpleNode>();
 		if (compareNode == null) {
 			return retList;
 		}
@@ -454,7 +454,7 @@ public class SimpleNodeHelper {
 			SimpleNode node = (SimpleNode) children[i];
 			
 			if (node.id == UQLParserTreeConstants.JJTOR) {
-				return new ArrayList<>();
+				return new ArrayList<SimpleNode>();
 			}
 			
 			if (node.id == UQLParserTreeConstants.JJTEQUALITYEQUATION) {
@@ -467,7 +467,7 @@ public class SimpleNodeHelper {
 	
 	public List<BasicExpression> buildAndExpressionList(SimpleNode filterNode, List<CollectionAlias> caList) {
 		List<SimpleNode> list = breakAnds(filterNode);
-		List<BasicExpression> retList = new ArrayList<>();
+		List<BasicExpression> retList = new ArrayList<BasicExpression>();
 		
 		for (int i = 0; i < list.size(); i++) {
 			SimpleNode node = list.get(i);
@@ -562,7 +562,7 @@ public class SimpleNodeHelper {
 	
 	
 	public boolean isStaticNode(SimpleNode node) {
-		List<SimpleNode> nodeList = new ArrayList<>();
+		List<SimpleNode> nodeList = new ArrayList<SimpleNode>();
 		getNodes(node, UQLParserTreeConstants.JJTCOLUMNANDALIAS, nodeList);
 		return nodeList.size() == 0 ? true : false;
 	}
@@ -593,7 +593,7 @@ public class SimpleNodeHelper {
 	}
 
 	public List<UpdateSetExpression> getUpdateSet(List<SimpleNode> updateSetNodes, List<CollectionAlias> caList) {
-		List<UpdateSetExpression> retList = new ArrayList<>();
+		List<UpdateSetExpression> retList = new ArrayList<UpdateSetExpression>();
 		
 		for (int i = 0; i < updateSetNodes.size(); i++) {
 			SimpleNode node = updateSetNodes.get(i);

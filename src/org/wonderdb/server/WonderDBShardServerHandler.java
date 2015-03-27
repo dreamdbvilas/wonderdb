@@ -89,7 +89,7 @@ public class WonderDBShardServerHandler extends SimpleChannelHandler {
     	byte[] bytes = new byte[queryLen];
     	buffer.readBytes(bytes);
     	String s = new String(bytes);
-    	List<Object> bindParamList = new ArrayList<>();
+    	List<Object> bindParamList = new ArrayList<Object>();
     	int bindParamCount = buffer.readInt();
     	for (int i = 0; i < bindParamCount; i++) {
     		byte b = buffer.readByte();

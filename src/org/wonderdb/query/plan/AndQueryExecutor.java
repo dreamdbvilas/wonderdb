@@ -84,9 +84,9 @@ public class AndQueryExecutor {
 				if (filter) {
 					if (resultContent instanceof IndexResultContent) {
 						context.map.remove(ca);
-						Set<Object> pinnedBlock = new HashSet<>();
+						Set<Object> pinnedBlock = new HashSet<Object>();
 						try {
-							List<Integer> columnsToFetchFromTable = new ArrayList<>();
+							List<Integer> columnsToFetchFromTable = new ArrayList<Integer>();
 							List<Integer> colIdList = selectColumnNames.get(ca);
 							for (int i = 0; i < colIdList.size(); i++) {
 								int colId = colIdList.get(i);

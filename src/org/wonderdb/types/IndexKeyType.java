@@ -26,7 +26,7 @@ public class IndexKeyType implements DBType {
 //	int size = -1;
 	
 	public IndexKeyType(List<DBType> value, RecordId recPosn) {
-		this.value = value == null ? new ArrayList<>() : new ArrayList<DBType>(value);
+		this.value = value == null ? new ArrayList<DBType>() : new ArrayList<DBType>(value);
 		this.recordPosn = recPosn;
 	}
 
@@ -99,6 +99,18 @@ public class IndexKeyType implements DBType {
 			return recordPosn.compareTo(key.recordPosn);
 		}
 		return 0;
+	}
+	
+	@Override
+	public int hashCode() {
+		int hashCode = 0;
+		if (value == null) {
+			return 0;
+		}
+		for (int i = 0; i < value.size(); i++) {
+			hashCode = hashCode + (value.get(i) == null ? 0 : value.hashCode());
+		}
+		return hashCode;
 	}
 	
 	public boolean equals(Object o) {

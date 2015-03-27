@@ -61,7 +61,7 @@ public class CacheWriter<Key, Data> extends Thread{
 	
 	public void shutdown() {
 		isShutdown = true;
-		currentThread.interrupt();
+//		currentThread.interrupt();
 		synchronized (shutdownLock) {
 			while(true) {
 				try {
@@ -88,25 +88,27 @@ public class CacheWriter<Key, Data> extends Thread{
 		currentThread = Thread.currentThread();
 		while (true) {
 			try {
-				if (writerFrequency < 0) {
-					synchronized (cacheMap.writtenBlocks) {
+				if (!isShutdown) {
+					if (writerFrequency < 0) {
+						synchronized (cacheMap.writtenBlocks) {
+							try {
+								cacheMap.writtenBlocks.wait();
+							} catch (InterruptedException e) {
+							}
+						}
+					} else {
 						try {
-							cacheMap.writtenBlocks.wait();
+							Thread.sleep(writerFrequency);
 						} catch (InterruptedException e) {
 						}
-					}
-				} else {
-					try {
-						Thread.sleep(writerFrequency);
-					} catch (InterruptedException e) {
 					}
 				}
 				
 				Iterator<Key> iter = cacheMap.writtenBlocks.keySet().iterator();
-				Set<Object> pinnedBlocks = new HashSet<>();
+				Set<Object> pinnedBlocks = new HashSet<Object>();
 				inprocessSyncTime = -1;
-				Set<Key> writtenBlocks = new HashSet<>();
-				Map<Key, Data> bufferMap = new HashMap<>();
+				Set<Key> writtenBlocks = new HashSet<Key>();
+				Map<Key, Data> bufferMap = new HashMap<Key, Data>();
 				
 				while (iter.hasNext()) {
 					Key ptr = iter.next();
@@ -143,48 +145,61 @@ public class CacheWriter<Key, Data> extends Thread{
 					} finally {
 						cacheMap.returnBucket(ptr, true);
 						CacheEntryPinner.getInstance().unpin(ptr, pinnedBlocks);
-					}								
-				}
-
-				Iterator<Key> iter1 = bufferMap.keySet().iterator();
-				List<Future<Integer>> futures = new ArrayList<>();
-				while (iter1.hasNext()) {
-					Key key = iter1.next();
-					Data data = bufferMap.get(key);
-					boolean flag = cacheMap.writtenBlocks.replace(key, 1, 2);
-					if (flag) {
-						while (true) {
-							try {
-								Future<Integer> future = writer.write(key, data);
-								futures.add(future);
-								break;
-							} catch (RejectedExecutionException e) {
-								Thread.sleep(100);									
+//						if (bufferMap.size() >= 5) {
+							Iterator<Key> iter1 = bufferMap.keySet().iterator();
+							List<Future<Integer>> futures = new ArrayList<Future<Integer>>();
+							while (iter1.hasNext()) {
+								Key key = iter1.next();
+								Data data = bufferMap.get(key);
+								boolean flag = cacheMap.writtenBlocks.replace(key, 1, 2);
+								if (flag) {
+									while (true) {
+										try {
+											Future<Integer> future = writer.write(key, data);
+											futures.add(future);
+											break;
+										} catch (RejectedExecutionException e) {
+											for (int i = 0; i < futures.size(); i++) {
+												futures.get(i).get();
+											}
+		//									Thread.sleep(100);									
+										}
+									}
+									
+								}
 							}
-						}
-						
-					}
+	
+							for (int i = 0; i < futures.size(); i++) {
+								futures.get(i).get();
+							}
+							
+							iter1 = writtenBlocks.iterator();
+							while (iter1.hasNext()) {
+								Key ptr1 = iter1.next();
+								cacheMap.writtenBlocks.remove(ptr1, 2);
+							}
+							bufferMap.clear();
+							writtenBlocks.clear();
+						}								
+//					}
 				}
 
-				for (int i = 0; i < futures.size(); i++) {
-					futures.get(i).get();
-				}
-				
+
 				syncTime = Math.max(syncTime, inprocessSyncTime);
 				LogManager.getInstance().resetLogs(syncTime);
 				if (isShutdown) {
 					shutdownOver = true;
+					System.out.println("didnt write: "+cacheMap.writtenBlocks.size());
 					synchronized (shutdownLock) {
 						shutdownLock.notifyAll();
 					}
-					return;
+					if (cacheMap.writtenBlocks.size()>0) {
+						continue; 
+					} else {
+						return;
+					}
 				}
 				
-				iter1 = writtenBlocks.iterator();
-				while (iter1.hasNext()) {
-					Key ptr = iter1.next();
-					cacheMap.writtenBlocks.remove(ptr, 2);
-				}
 			} catch (Exception e) {
 				e.printStackTrace();
 			}

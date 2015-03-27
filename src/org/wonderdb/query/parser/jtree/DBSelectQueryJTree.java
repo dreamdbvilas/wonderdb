@@ -76,7 +76,7 @@ public class DBSelectQueryJTree extends BaseDBQuery {
 		SimpleNode node = SimpleNodeHelper.getInstance().getFirstNode(selectStmt, UQLParserTreeConstants.JJTFILTEREXPRESSION);
 		node = SimpleNodeHelper.getInstance().getFirstNode(node, UQLParserTreeConstants.JJTCOMPAREEQUATION);
 		if (node != null) {
-			List<BasicExpression> andList = SimpleNodeHelper.getInstance().buildAndExpressionList(node, new ArrayList<>(fromMap.values()));
+			List<BasicExpression> andList = SimpleNodeHelper.getInstance().buildAndExpressionList(node, new ArrayList<CollectionAlias>(fromMap.values()));
 			andExp = new AndExpression(andList);
 		}
 	}
@@ -91,15 +91,15 @@ public class DBSelectQueryJTree extends BaseDBQuery {
 		SimpleNode node = filterNode;
 		node = SimpleNodeHelper.getInstance().getFirstNode(node, UQLParserTreeConstants.JJTCOMPAREEQUATION);
 		if (node != null) {
-			List<BasicExpression> andList = SimpleNodeHelper.getInstance().buildAndExpressionList(node, new ArrayList<>(fromMap.values()));
+			List<BasicExpression> andList = SimpleNodeHelper.getInstance().buildAndExpressionList(node, new ArrayList<CollectionAlias>(fromMap.values()));
 			andExp = new AndExpression(andList);
 		}
-		selectStmt = new ArrayList<>();
+		selectStmt = new ArrayList<SimpleNode>();
 		selectStmt.add(query);
 }
 	
 	public List<CollectionAlias> getFromList() {
-		return new ArrayList<>(fromMap.values());
+		return new ArrayList<CollectionAlias>(fromMap.values());
 	}
 	
 //	public String getQuery() {
@@ -111,7 +111,7 @@ public class DBSelectQueryJTree extends BaseDBQuery {
 	}
 	
 	public List<QueryPlan> getPlan(Shard shard) {
-		List<QueryPlan> planList = QueryPlanBuilder.getInstance().build(new ArrayList<>(fromMap.values()), shard, andExp, pinnedBlocks);
+		List<QueryPlan> planList = QueryPlanBuilder.getInstance().build(new ArrayList<CollectionAlias>(fromMap.values()), shard, andExp, pinnedBlocks);
 		return planList;
 	}
 	
@@ -134,10 +134,10 @@ public class DBSelectQueryJTree extends BaseDBQuery {
 	public List<List<ResultSetValue>> executeLocal(Shard shard) {
 		List<List<ResultSetValue>> resultListList = new ArrayList<List<ResultSetValue>>();
 		try {
-			List<QueryPlan> planList = QueryPlanBuilder.getInstance().build(new ArrayList<>(fromMap.values()), shard, andExp, pinnedBlocks);
+			List<QueryPlan> planList = QueryPlanBuilder.getInstance().build(new ArrayList<CollectionAlias>(fromMap.values()), shard, andExp, pinnedBlocks);
 			
 			List<Map<CollectionAlias, RecordId>> mapList = new ArrayList<Map<CollectionAlias,RecordId>>();
-			AndQueryExecutor.getInstance().executeTree(shard, planList, selectStmt.get(0), false, new ArrayList<>(fromMap.values()), fromMap, 
+			AndQueryExecutor.getInstance().executeTree(shard, planList, selectStmt.get(0), false, new ArrayList<CollectionAlias>(fromMap.values()), fromMap, 
 					selectColumnNames, mapList, null, true);
 			DataContext dc = new DataContext();
 			List<ResultSetValue> resultList = new ArrayList<ResultSetValue>();
@@ -203,9 +203,9 @@ public class DBSelectQueryJTree extends BaseDBQuery {
 		
 		List<Map<CollectionAlias, TableRecord>> retList = new ArrayList<Map<CollectionAlias,TableRecord>>();
 //		List<Map<CollectionAlias, RecordId>> resultList = new ArrayList<Map<CollectionAlias,RecordId>>();
-		List<QueryPlan> planList = QueryPlanBuilder.getInstance().build(new ArrayList<>(fromMap.values()), shard, andExp, pinnedBlocks);
+		List<QueryPlan> planList = QueryPlanBuilder.getInstance().build(new ArrayList<CollectionAlias>(fromMap.values()), shard, andExp, pinnedBlocks);
 		List<Map<CollectionAlias, RecordId>> mapList = new ArrayList<Map<CollectionAlias,RecordId>>();
-		AndQueryExecutor.getInstance().executeTree(shard, planList, selectStmt.get(0), false, new ArrayList<>(fromMap.values()), fromMap, selectColumnNames, mapList, null, true);
+		AndQueryExecutor.getInstance().executeTree(shard, planList, selectStmt.get(0), false, new ArrayList<CollectionAlias>(fromMap.values()), fromMap, selectColumnNames, mapList, null, true);
 
 		CacheEntryPinner.getInstance().unpin(pinnedBlocks, pinnedBlocks);
 
@@ -235,8 +235,8 @@ public class DBSelectQueryJTree extends BaseDBQuery {
 	public List<Map<CollectionAlias, RecordId>> executeGetDC(Shard shard) {
 		List<Map<CollectionAlias, RecordId>> resultList = new ArrayList<Map<CollectionAlias,RecordId>>();
 		try {
-			List<QueryPlan> planList = QueryPlanBuilder.getInstance().build(new ArrayList<>(fromMap.values()), shard, andExp, pinnedBlocks);
-			AndQueryExecutor.getInstance().executeTree(shard, planList, selectStmt.get(0), false, new ArrayList<>(fromMap.values()), fromMap, selectColumnNames, resultList, null, true);
+			List<QueryPlan> planList = QueryPlanBuilder.getInstance().build(new ArrayList<CollectionAlias>(fromMap.values()), shard, andExp, pinnedBlocks);
+			AndQueryExecutor.getInstance().executeTree(shard, planList, selectStmt.get(0), false, new ArrayList<CollectionAlias>(fromMap.values()), fromMap, selectColumnNames, resultList, null, true);
 		} catch (Exception e) {
 			e.printStackTrace();
 		} finally {
@@ -247,7 +247,7 @@ public class DBSelectQueryJTree extends BaseDBQuery {
 	}
 		
 	private void buildSelectColumnNames(Map<String, CollectionAlias> map) {
-		List<SimpleNode> columnAliasList = new ArrayList<>();
+		List<SimpleNode> columnAliasList = new ArrayList<SimpleNode>();
 		SimpleNodeHelper.getInstance().getNodes(queryNode, UQLParserTreeConstants.JJTCOLUMNANDALIAS, columnAliasList);
 		buildSelectColumnNames(columnAliasList);
 	}
@@ -258,7 +258,7 @@ public class DBSelectQueryJTree extends BaseDBQuery {
 	}
 	
 	private void buildResultSetColumnList(SimpleNode literalListNode) {
-		List<SimpleNode> list = new ArrayList<>(); 
+		List<SimpleNode> list = new ArrayList<SimpleNode>(); 
 		SimpleNodeHelper.getInstance().getNodes(literalListNode, UQLParserTreeConstants.JJTCOLUMNANDALIAS, list);
 		for (int i = 0; i < list.size(); i++) {
 			SimpleNode node = list.get(i);
@@ -320,7 +320,7 @@ public class DBSelectQueryJTree extends BaseDBQuery {
 			int colId = colMeta.getColumnId(columnName);
 			List<Integer> colIdList = selectColumnNames.get(ca);
 			if (colIdList == null) {
-				colIdList = new ArrayList<>();
+				colIdList = new ArrayList<Integer>();
 				selectColumnNames.put(ca, colIdList);
 			}
 			colIdList.add(colId);
@@ -333,7 +333,7 @@ public class DBSelectQueryJTree extends BaseDBQuery {
 			CollectionAlias ca = iter.next();
 			List<Integer> colIdList = selectColumnNames.get(ca);
 			if (colIdList == null) {
-				colIdList = new ArrayList<>();
+				colIdList = new ArrayList<Integer>();
 				selectColumnNames.put(ca, colIdList);
 			}
 			CollectionMetadata colMeta = SchemaMetadata.getInstance().getCollectionMetadata(ca.getCollectionName());

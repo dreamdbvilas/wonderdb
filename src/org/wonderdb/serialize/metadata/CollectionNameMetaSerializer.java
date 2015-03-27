@@ -49,7 +49,7 @@ public class CollectionNameMetaSerializer implements TypeSerializer {
 		CollectionNameMeta cnm = (CollectionNameMeta) object;		
 		int size = Serializer.getInstance().getObjectSize(SerializerManager.STRING, new StringType(cnm.getName()), meta);
 		size = size + Serializer.getInstance().getObjectSize(SerializerManager.BLOCK_PTR, cnm.getHead(), meta);
-		size = size + Integer.BYTES;
+		size = size + Integer.SIZE/8;
 		size = size + 1;
 		return size;
 	}

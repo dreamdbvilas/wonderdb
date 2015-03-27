@@ -25,6 +25,7 @@ public class FileBlockEntrySerializer implements TypeSerializer {
 	public DBType unmarshal(int type, ChannelBuffer buffer, TypeMetadata meta) {
 		FileBlockEntry fbe = new FileBlockEntry();
 		byte b = buffer.readByte();
+		fbe.setFileId(b);
 		StringType st = (StringType) Serializer.getInstance().getObject(SerializerManager.STRING, buffer, null);
 		String fileName = st.get();
 		b = buffer.readByte();
@@ -33,7 +34,6 @@ public class FileBlockEntrySerializer implements TypeSerializer {
 		
 		fbe.setBlockSize(blockSize);
 		fbe.setDefaultFile(isDefaultFile);
-		fbe.setFileId(b);
 		fbe.setFileName(fileName);
 		return fbe;
 	}
@@ -50,14 +50,14 @@ public class FileBlockEntrySerializer implements TypeSerializer {
 	@Override
 	public int getSize(DBType object, TypeMetadata meta) {
 		FileBlockEntry fbe = (FileBlockEntry) object;
-		int size = 1 + 1 + Integer.BYTES;
+		int size = 1 + 1 + Integer.SIZE/8;
 		size = size + Serializer.getInstance().getObjectSize(SerializerManager.STRING, new StringType(fbe.getFileName()), null);
 		return size;
 	}
 
 	@Override
 	public boolean isNull(int type, DBType object) {
-		return object == null || NULL_FILE_BLOCK_ENTRY.equals(object);
+		return object == null || NULL_FILE_BLOCK_ENTRY == object;
 	}
 
 	@Override

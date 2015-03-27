@@ -4,6 +4,7 @@ import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.InputStream;
 import java.lang.management.ManagementFactory;
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -31,7 +32,7 @@ import org.wonderdb.cache.impl.SecondaryCacheResourceProvider;
 import org.wonderdb.cache.impl.SecondaryCacheResourceProviderFactory;
 import org.wonderdb.core.collection.WonderDBList;
 import org.wonderdb.file.FileCacheWriter;
-import org.wonderdb.freeblock.FreeBlockFactory;
+import org.wonderdb.file.FilePointerFactory;
 import org.wonderdb.metadata.StorageMetadata;
 import org.wonderdb.parser.jtree.SimpleNode;
 import org.wonderdb.parser.jtree.UQLParser;
@@ -41,7 +42,11 @@ import org.wonderdb.query.parser.jtree.DBSelectQueryJTree;
 import org.wonderdb.query.parser.jtree.DBSelectQueryJTree.ResultSetValue;
 import org.wonderdb.query.plan.DataContext;
 import org.wonderdb.schema.SchemaMetadata;
+import org.wonderdb.serialize.SerializerManager;
 import org.wonderdb.types.BlockPtr;
+import org.wonderdb.types.ColumnNameMeta;
+import org.wonderdb.types.FileBlockEntry;
+import org.wonderdb.types.IndexNameMeta;
 import org.wonderdb.types.record.Record;
 
 public class WonderDBCacheService {
@@ -56,11 +61,11 @@ public class WonderDBCacheService {
 	
 	static CacheBean primaryCacheBean = new CacheBean();
 	static CacheState primaryCacheState = new CacheState();
-	static MemoryCacheMap<BlockPtr, List<Record>> primaryCacheMap = new MemoryCacheMap<>(1000, 5, false);
+	static MemoryCacheMap<BlockPtr, List<Record>> primaryCacheMap = new MemoryCacheMap<BlockPtr, List<Record>>(1000, 5, false);
 	static CacheLock cacheLock = new CacheLock();
 	static CacheBean secondaryCacheBean = new CacheBean();
 	static CacheState secondaryCacheState = new CacheState();
-	static MemoryCacheMap<BlockPtr, ChannelBuffer> secondaryCacheMap = new MemoryCacheMap<>(5000, 5, true);
+	static MemoryCacheMap<BlockPtr, ChannelBuffer> secondaryCacheMap = new MemoryCacheMap<BlockPtr, ChannelBuffer>(5000, 5, true);
 	static CacheHandler<BlockPtr, List<Record>> primaryCacheHandler = null;
 	static CacheHandler<BlockPtr, ChannelBuffer> secondaryCacheHandler = null;
 	public static CacheWriter<BlockPtr, ChannelBuffer> writer = null;
@@ -77,7 +82,7 @@ public class WonderDBCacheService {
 				cacheLock, primaryProvider, false);
 		PrimaryCacheHandlerFactory.getInstance().setCacheHandler(primaryCacheHandler);
 		
-		writer = new CacheWriter<>(secondaryCacheMap, 1000, new FileCacheWriter());
+		writer = new CacheWriter<BlockPtr, ChannelBuffer>(secondaryCacheMap, 1000, new FileCacheWriter());
 		writer.start();
 
 		secondaryCacheBean.setCleanupHighWaterMark(WonderDBPropertyManager.getInstance().getSecondaryCacheHighWatermark()); // 1475
@@ -104,9 +109,46 @@ public class WonderDBCacheService {
 		if (file.exists()) {
 			StorageMetadata.getInstance().init(false);
 			SchemaMetadata.getInstance().init(false);
+			
+
 		} else {
 			StorageMetadata.getInstance().init(true);
 			SchemaMetadata.getInstance().init(true);
+						
+			FileBlockEntry fbe = new FileBlockEntry();
+			fbe.setBlockSize(2048);
+			fbe.setFileName("cache.data");
+			StorageMetadata.getInstance().add(fbe);
+
+			List<ColumnNameMeta> columns = new ArrayList<ColumnNameMeta>();
+			ColumnNameMeta cnm = new ColumnNameMeta();
+			cnm.setCollectioName("cache");
+			cnm.setColumnName("key");
+			cnm.setColumnType(SerializerManager.BYTE_ARRAY_TYPE);
+			cnm.setCoulmnId(0);
+			
+			columns.add(cnm);
+			cnm = new ColumnNameMeta();
+			cnm.setCollectioName("cache");
+			cnm.setColumnName("value");
+			cnm.setColumnType(SerializerManager.BYTE_ARRAY_TYPE);
+			cnm.setCoulmnId(1);
+			columns.add(cnm);
+			
+			SchemaMetadata.getInstance().createNewCollection("cache", null, columns, 10);
+			
+			IndexNameMeta inm = new IndexNameMeta();
+			inm.setIndexName("cacheIndex");
+			inm.setAscending(true);
+			inm.setUnique(true);
+			inm.setCollectionName("cache");
+			List<Integer> columnIdList = new ArrayList<Integer>();
+			columnIdList.add(0);
+			inm.setColumnIdList(columnIdList);
+//			String storageFile = StorageMetadata.getInstance().getDefaultFileName();
+			String storageFile = "cache.data";
+			SchemaMetadata.getInstance().createNewIndex(inm, storageFile);
+
 		}
 
 //        writer.shutdown();
@@ -120,21 +162,21 @@ public class WonderDBCacheService {
     }
 	
 	public void shutdown() {
-		writer.shutdown();
         primaryCacheHandler.shutdown();
         secondaryCacheHandler.shutdown();
         ScatterGatherQueryExecutor.shutdown();
         WonderDBList.shutdown();
 //        Thread.currentThread().sleep(60000);
         System.out.println("Shutdown");
+		writer.shutdown();
         StorageMetadata.getInstance().shutdown();
         System.out.println("Shutdown");
-        FreeBlockFactory.getInstance().shutdown();
+		FilePointerFactory.getInstance().shutdown();
 	}
 	
 	public static void main(String[] args) throws Exception {
 		WonderDBCacheService.getInstance().init(args[0]);
-		Set<Object> pinnedBlocks = new HashSet<>();
+		Set<Object> pinnedBlocks = new HashSet<Object>();
 //		WonderDBList list = SchemaMetadata.getInstance().createNewList("vilas", 5, new ColumnSerializerMetadata(SerializerManager.STRING));
 //		WonderDBList list = SchemaMetadata.getInstance().getCollectionMetadata("vilas").getRecordList(new Shard(""));
 //		StringType st = new StringType("athavale");

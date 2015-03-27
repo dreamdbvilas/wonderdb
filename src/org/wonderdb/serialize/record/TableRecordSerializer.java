@@ -43,7 +43,7 @@ public class TableRecordSerializer  {
 			BlockPtr ptr = (BlockPtr) Serializer.getInstance().getObject(SerializerManager.BLOCK_PTR, buffer, meta);
 			List<BlockPtr> extendedPtrs = new ArrayList<BlockPtr>();
 			extendedPtrs.add(ptr);
-			record = new ExtendedTableRecord(new HashMap<>(), extendedPtrs);
+			record = new ExtendedTableRecord(new HashMap<Integer, DBType>(), extendedPtrs);
 			return record;
 		}
 		record = new TableRecord(null);
@@ -56,7 +56,7 @@ public class TableRecordSerializer  {
 
 		TableRecordMetadata trsb = (TableRecordMetadata) meta;
 		int size = buffer.readInt();
-		Map<Integer, DBType> map = new HashMap<>(size);
+		Map<Integer, DBType> map = new HashMap<Integer, DBType>(size);
 		
 		for (int i = 0; i < size; i++) {
 			int columnId = buffer.readInt();
@@ -71,7 +71,7 @@ public class TableRecordSerializer  {
 	public void readFull(TableRecord record, TypeMetadata meta) {
 		
 		ChannelBuffer buf = null;
-		Set<Object> pinnedBlocks = new HashSet<>();
+		Set<Object> pinnedBlocks = new HashSet<Object>();
 		try {
 			if (record instanceof Extended) {
 				buf = LazyExtendedSpaceProvider.getInstance().provideSpaceToRead(((Extended) record).getPtrList(), pinnedBlocks);
@@ -86,7 +86,7 @@ public class TableRecordSerializer  {
 	}
 	
 	public int getFullSize(TableRecord record, TypeMetadata meta) {
-		int size = 1 + Integer.BYTES + 9;
+		int size = 1 + Integer.SIZE/8 + 9;
 		TableRecordMetadata trsm = (TableRecordMetadata) meta;
 		Map<Integer, Integer> map = trsm.getColumnIdTypeMap();
 		Iterator<Integer> iter = record.getColumnMap().keySet().iterator();
@@ -95,7 +95,7 @@ public class TableRecordSerializer  {
 			int type = map.get(id);
 			DBType column = record.getColumnMap().get(id);
 			
-			size = size + Integer.BYTES + ColumnSerializer.getInstance().getObjectSize(column, new ColumnSerializerMetadata(type));
+			size = size + Integer.SIZE/8 + ColumnSerializer.getInstance().getObjectSize(column, new ColumnSerializerMetadata(type));
 		}
 		return size;
 	}
@@ -113,7 +113,7 @@ public class TableRecordSerializer  {
 		int size = getFullSize(record, meta);
 		
 		int blocksRequired = getExtraBlocksRequired(size, blockSize);
-		List<BlockPtr> list = record instanceof Extended ? ((Extended) record).getPtrList() : new ArrayList<>();
+		List<BlockPtr> list = record instanceof Extended ? ((Extended) record).getPtrList() : new ArrayList<BlockPtr>();
 		ChannelBuffer buf = LazyExtendedSpaceProvider.getInstance().provideSpaceToWrite(fileId, list, blocksRequired, pinnedBlocks);
 		RecordHeader header = new RecordHeader();
 		if (blocksRequired > 0) {

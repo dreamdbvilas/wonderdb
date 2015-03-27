@@ -45,7 +45,7 @@ public class QueryParser {
 	}
 
 	public DBQuery parse(String query) {
-		return parse(query, new ArrayList<>(), -1, null);
+		return parse(query, new ArrayList<Object>(), -1, null);
 	}
 	
 	public DBQuery parse(String query, List<Object> bindParamList, int type, ChannelBuffer buffer) {
@@ -56,7 +56,7 @@ public class QueryParser {
 		} catch (Exception e) {
 			throw new RuntimeException(e);
 		}
-		List<SimpleNode> bindList = new ArrayList<>();
+		List<SimpleNode> bindList = new ArrayList<SimpleNode>();
 		SimpleNodeHelper.getInstance().getNodes(node, UQLParserTreeConstants.JJTQ, bindList);
 		if (bindList.size() != bindParamList.size()) {
 			throw new RuntimeException("Invalid bind params");

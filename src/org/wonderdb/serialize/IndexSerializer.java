@@ -33,7 +33,7 @@ public class IndexSerializer implements TypeSerializer {
 	public static IndexKeyType NULL_INDEX_KEY_TYPE = new IndexKeyType(null, null);
 	
 	private static IndexSerializer instance = new IndexSerializer();
-	public static final int BASE_SIZE = 9 + Integer.BYTES;
+	public static final int BASE_SIZE = 9 + Integer.SIZE/8;
 	
 	private IndexSerializer() {
 	}

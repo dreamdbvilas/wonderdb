@@ -60,11 +60,11 @@ public class WonderDBServer {
 	
 	static CacheBean primaryCacheBean = new CacheBean();
 	static CacheState primaryCacheState = new CacheState();
-	static MemoryCacheMap<BlockPtr, List<Record>> primaryCacheMap = new MemoryCacheMap<>(1000, 5, false);
+	static MemoryCacheMap<BlockPtr, List<Record>> primaryCacheMap = new MemoryCacheMap<BlockPtr, List<Record>>(1000, 5, false);
 	static CacheLock cacheLock = new CacheLock();
 	static CacheBean secondaryCacheBean = new CacheBean();
 	static CacheState secondaryCacheState = new CacheState();
-	static MemoryCacheMap<BlockPtr, ChannelBuffer> secondaryCacheMap = new MemoryCacheMap<>(1500, 5, true);
+	static MemoryCacheMap<BlockPtr, ChannelBuffer> secondaryCacheMap = new MemoryCacheMap<BlockPtr, ChannelBuffer>(1500, 5, true);
 //	static SecondaryCacheResourceProvider resourceProvider = null;
 	static int colId = -1;
 	static CacheHandler<BlockPtr, List<Record>> primaryCacheHandler = null;

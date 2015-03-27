@@ -56,7 +56,7 @@ public class ColumnSerializer {
 	
 	public void readFull(DBType column, TypeMetadata meta) {
 		ChannelBuffer buf = null;
-		Set<Object> pinnedBlocks = new HashSet<>();
+		Set<Object> pinnedBlocks = new HashSet<Object>();
 		try {
 			if (column instanceof Extended) {
 				buf = LazyExtendedSpaceProvider.getInstance().provideSpaceToRead(((Extended) column).getPtrList(), pinnedBlocks);
@@ -86,7 +86,7 @@ public class ColumnSerializer {
 		}
 		int size = 1+ Serializer.getInstance().getObjectSize(type, column.getValue(meta), meta);
 		int blocksRequired = getExtraBlocksRequired(size, blockSize);
-		List<BlockPtr> list = column instanceof ExtendedColumn ? ((ExtendedColumn) column).getPtrList() : new ArrayList<>();
+		List<BlockPtr> list = column instanceof ExtendedColumn ? ((ExtendedColumn) column).getPtrList() : new ArrayList<BlockPtr>();
 		ChannelBuffer buf = LazyExtendedSpaceProvider.getInstance().provideSpaceToWrite(fileId, list, blocksRequired, pinnedBlocks);
 		ColumnHeader header = new ColumnHeader();
 		if (column.getValue(meta) == NullType.getInstance()) {

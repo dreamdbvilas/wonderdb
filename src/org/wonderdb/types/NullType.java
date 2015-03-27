@@ -21,5 +21,4 @@ public class NullType implements DBType {
 	public DBType copyOf() {
 		return instance;
 	}
-
 }

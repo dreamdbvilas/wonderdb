@@ -68,6 +68,11 @@ public class FloatType implements DBType {
 		}
 		return false;
 	}
+	
+	@Override
+	public int hashCode() {
+		return value == null ? 0 : value.hashCode();
+	}
 
 	public String toString() {
 		return String.valueOf(value);

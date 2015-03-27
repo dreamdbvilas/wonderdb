@@ -66,7 +66,7 @@ public class SplitFactory {
 		int maxBlockSize = StorageUtils.getInstance().getTotalBlockSize(block.getPtr()) - overhead;
 		List<Record> list = block.getData();
 		List<List<Record>> listOfList = new ArrayList<List<Record>>();
-		List<Record> currentList = new ArrayList<>();
+		List<Record> currentList = new ArrayList<Record>();
 		int currentListSize = 0;
 		listOfList.add(currentList);
 		

@@ -15,6 +15,8 @@
  *******************************************************************************/
 package org.wonderdb.types;
 
+import java.util.Arrays;
+
 import org.wonderdb.serialize.DefaultSerializer;
 
 public class ByteArrayType implements DBType {
@@ -86,5 +88,13 @@ public class ByteArrayType implements DBType {
 		}
 		
 		return this.compareTo(bt) == 0; 
+	}
+	
+	@Override
+	public int hashCode() {
+		if (bytes == null) {
+			return 0;
+		}
+		return Arrays.hashCode(bytes);
 	}
 }

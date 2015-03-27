@@ -43,7 +43,7 @@ public class MemoryCacheMap<Key, Data> implements Cache<Key, Data> {
 		this.trackWrites = trackWrites;
 		
 		for (int i = 0; i < listSize; i++) {
-			array[i] = new ArrayList<>();
+			array[i] = new ArrayList<Cacheable<Key, Data>>();
 		}
 		lock = new ReentrantReadWriteLock[this.concurrencyLevel];
 		for (int i = 0; i < lock.length; i++) {

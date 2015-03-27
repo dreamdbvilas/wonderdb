@@ -26,7 +26,7 @@ import org.wonderdb.types.record.Record;
 
 public abstract class BaseBlock implements Block {
 
-	private List<Record> records = new ArrayList<>();
+	private List<Record> records = new ArrayList<Record>();
 	private ReentrantReadWriteLock rwLock = new ReentrantReadWriteLock();
 
 	BlockPtr ptr = null;

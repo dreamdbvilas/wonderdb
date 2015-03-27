@@ -78,7 +78,7 @@ public class TableRecordManager {
 		CollectionMetadata colMeta = SchemaMetadata.getInstance().getCollectionMetadata(collectionName);
 		Map<Integer, DBType> retMap = new HashMap<Integer, DBType>();
 		
-		List<ColumnNameMeta> newColumns = new ArrayList<>();
+		List<ColumnNameMeta> newColumns = new ArrayList<ColumnNameMeta>();
 		
 		Iterator<String> iter = ctMap.keySet().iterator();
 		while (iter.hasNext()) {
@@ -113,7 +113,7 @@ public class TableRecordManager {
 //			colMeta = SchemaMetadata.getInstance().getCollectionMetadata(tableName);
 		}
 		
-		Map<Integer, DBType> columnMap = new HashMap<>(map);
+		Map<Integer, DBType> columnMap = new HashMap<Integer, DBType>(map);
 		TableRecord trt = new TableRecord(columnMap);
 		WonderDBList dbList = colMeta.getRecordList(shard);
 		TransactionId txnId = null;
@@ -128,15 +128,18 @@ public class TableRecordManager {
 		try {
 			List<IndexNameMeta> idxMetaList = SchemaMetadata.getInstance().getIndexes(tableName);
 			ret = checkForUniqueViolations(idxMetaList, tableName, map, shard, null, pinnedBlocks);
+			if (ret.anotherInflightTxn && insertOrUpdate) {
+				return 0;
+			}
 			if (ret.recordId != null) {
 				if (insertOrUpdate) {
 					TableRecordMetadata meta = (TableRecordMetadata) SchemaMetadata.getInstance().getTypeMetadata(tableName);
 					BlockAndRecord bar = null;
-					bar = RecordManager.getInstance().getTableRecordAndLock(ret.recordId, new ArrayList<>(map.keySet()), meta, pinnedBlocks);
+					bar = RecordManager.getInstance().getTableRecordAndLock(ret.recordId, new ArrayList<Integer>(map.keySet()), meta, pinnedBlocks);
 					if (bar != null && bar.block != null && bar.record != null) {
 						recordId = ((TableRecord) bar.record).getRecordId();
 						ObjectLocker.getInstance().acquireLock(recordId);
-						updateTableRecord(tableName, (TableRecord) bar.record, new ArrayList<>(map.keySet()), new ArrayList<>(), columnMap, dbList, txnId, pinnedBlocks);
+						updateTableRecord(tableName, (TableRecord) bar.record, new ArrayList<Integer>(map.keySet()), new ArrayList<IndexNameMeta>(), columnMap, dbList, txnId, pinnedBlocks);
 						return 1;
 					} else {
 						return 0;
@@ -192,6 +195,7 @@ public class TableRecordManager {
 	private class ViolatedKeysAndRecord {
 		Set<IndexKeyType> indexSet = null;
 		RecordId recordId = null;
+		boolean anotherInflightTxn = false;
 	}
 
 	private ViolatedKeysAndRecord checkForUniqueViolations(List<IndexNameMeta> idxMetaList, String tableName, Map<Integer, DBType> map, 
@@ -244,6 +248,8 @@ public class TableRecordManager {
 					}
 				}
 			}
+		} else {
+			ret.anotherInflightTxn = true;
 		}
 		return ret;
 	}
@@ -262,7 +268,7 @@ public class TableRecordManager {
 //		}
 		TableRecord record = null;
 		Set<IndexKeyType> uIndexLock = null;
-		Set<Object> pinnedBlocks = new HashSet<>();
+		Set<Object> pinnedBlocks = new HashSet<Object>();
 		ViolatedKeysAndRecord ret = null;
 		CacheEntryPinner.getInstance().pin(recordId.getPtr(), pinnedBlocks);
 		CollectionAlias ca = new CollectionAlias(tableName, "");
@@ -306,12 +312,12 @@ public class TableRecordManager {
 				return 0;
 			}
 			
-			Map<Integer, DBType> changedValues = new HashMap<>();
+			Map<Integer, DBType> changedValues = new HashMap<Integer, DBType>();
 			updateChangedValues(context, updateSetList, changedValues, fromMap);
 			List<IndexNameMeta> changedIndexes = getChangedIndexes(tableName, changedValues);
 
 			Map<Integer, DBType> columnMap = record.getColumnMap();
-			Map<Integer, DBType> ctMap = new HashMap<>(columnMap.size());
+			Map<Integer, DBType> ctMap = new HashMap<Integer, DBType>(columnMap.size());
 			
 			Iterator<Integer> iter = columnMap.keySet().iterator();
 			while (iter.hasNext()) {
@@ -319,7 +325,7 @@ public class TableRecordManager {
 				DBType column = columnMap.get(key);
 				ctMap.put(key, column);
 			}
-			Map<Integer, DBType> workingCtMap = new HashMap<>(ctMap);
+			Map<Integer, DBType> workingCtMap = new HashMap<Integer, DBType>(ctMap);
 			workingCtMap.putAll(changedValues);
 			
 			ret = checkForUniqueViolations(changedIndexes, tableName, workingCtMap, shard, recordId, pinnedBlocks);
@@ -463,9 +469,9 @@ public class TableRecordManager {
 			List<IndexNameMeta> idxMetaList = SchemaMetadata.getInstance().getIndexes("cache");
 			IndexNameMeta inm = idxMetaList.get(0);
 			Shard shard = new Shard("");
-			Set<Object> pinnedBlocks = new HashSet<>();
+			Set<Object> pinnedBlocks = new HashSet<Object>();
 			TypeMetadata meta = SchemaMetadata.getInstance().getIndexMetadata(inm);
-			List<DBType> list = new ArrayList<>();
+			List<DBType> list = new ArrayList<DBType>();
 			list.add(key);
 			IndexKeyType ikt = new IndexKeyType(list, null);
 			TransactionId txnId = LogManager.getInstance().startTxn();
@@ -555,7 +561,7 @@ public class TableRecordManager {
 	private IndexKeyType buildIndexKey(IndexNameMeta idxMeta, Map<Integer, DBType> columnMap, RecordId recordId, Set<Object> pinnedBlocks) {
 		List<Integer> idxColList = idxMeta.getColumnIdList();
 		IndexRecordMetadata meta = (IndexRecordMetadata) SchemaMetadata.getInstance().getIndexMetadata(idxMeta);
-		List<DBType> idxCols = new ArrayList<>();
+		List<DBType> idxCols = new ArrayList<DBType>();
 		for (int i = 0; i < idxColList.size(); i++) {
 			int colId = idxColList.get(i);
 			DBType column = columnMap.get(colId);

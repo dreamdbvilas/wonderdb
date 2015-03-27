@@ -59,7 +59,7 @@ public class ObjectRecordSerializer {
 	public void readFull(ObjectRecord record, TypeMetadata meta) {
 		
 		ChannelBuffer buf = null;
-		Set<Object> pinnedBlocks = new HashSet<>();
+		Set<Object> pinnedBlocks = new HashSet<Object>();
 		try {
 			if (record instanceof Extended) {
 				buf = LazyExtendedSpaceProvider.getInstance().provideSpaceToRead(((Extended) record).getPtrList(), pinnedBlocks);

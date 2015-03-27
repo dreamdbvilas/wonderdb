@@ -38,7 +38,7 @@ public class ExtendedUtils {
 	}
 	
 	public void releaseExtended(Extended extended) {
-		Set<Object> pinnedBlocks = new HashSet<>();
+		Set<Object> pinnedBlocks = new HashSet<Object>();
 		try {
 			List<BlockPtr> ptrList = extended.getPtrList();
 			for (int i = 0; i < ptrList.size(); i++) {
@@ -61,7 +61,7 @@ public class ExtendedUtils {
 		SerializedBlockImpl resource = (SerializedBlockImpl) secondaryResourceProvider.getResource(ptr, StorageUtils.getInstance().getSmallestBlockCount(ptr));
 		primaryResourceProvider.getResource(ptr, StorageUtils.getInstance().getSmallestBlockCount(ptr));
 		secondaryCacheHandler.forceAdd(resource);
-		List<BlockPtr> list = new ArrayList<>();
+		List<BlockPtr> list = new ArrayList<BlockPtr>();
 		list.add(ptr);
 		return list;
 	}

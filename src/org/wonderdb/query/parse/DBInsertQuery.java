@@ -45,7 +45,7 @@ import org.wonderdb.types.StringType;
 
 
 public class DBInsertQuery extends BaseDBQuery {
-	Map<Integer, DBType> map = new HashMap<>();
+	Map<Integer, DBType> map = new HashMap<Integer, DBType>();
 	String collectionName;
 	int currentBindPosn = 0;
 	AndExpression andExp = null;
@@ -77,13 +77,13 @@ public class DBInsertQuery extends BaseDBQuery {
 	
 	private void buildMap() {
 		SimpleNode node = SimpleNodeHelper.getInstance().getFirstNode(queryNode, UQLParserTreeConstants.JJTINSERTCOLUMNLIST);
-		List<SimpleNode> nodeList = new ArrayList<>();
+		List<SimpleNode> nodeList = new ArrayList<SimpleNode>();
 		SimpleNodeHelper.getInstance().getNodes(node, UQLParserTreeConstants.JJTCOLUMNANDALIAS, nodeList);
-		Map<String, CollectionAlias> fromMap = new HashMap<>();
+		Map<String, CollectionAlias> fromMap = new HashMap<String, CollectionAlias>();
 		fromMap.put("", new CollectionAlias(collectionName, ""));
 		QueryEvaluator qe = new QueryEvaluator(fromMap, context);
 		node = SimpleNodeHelper.getInstance().getFirstNode(queryNode, UQLParserTreeConstants.JJTLITERALLIST);
-		List<SimpleNode> valueList = new ArrayList<>();
+		List<SimpleNode> valueList = new ArrayList<SimpleNode>();
 		CollectionMetadata colMeta = SchemaMetadata.getInstance().getCollectionMetadata(collectionName);
 		SimpleNodeHelper.getInstance().getNodes(node, UQLParserTreeConstants.JJTUNARYEXPRESSION, valueList);
 		for (int i = 0; i < nodeList.size(); i++) {

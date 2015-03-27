@@ -30,8 +30,8 @@ public class ExtendedTableRecord extends TableRecord implements Extended {
 	@Override
 	public DBType copyOf() {
 		ExtendedTableRecord etr = new ExtendedTableRecord(columnMap, ptrList);
-		etr.columnMap = new HashMap<>(columnMap);
-		etr.ptrList = new ArrayList<>(ptrList);
+		etr.columnMap = new HashMap<Integer, DBType>(columnMap);
+		etr.ptrList = new ArrayList<BlockPtr>(ptrList);
 		etr.setRecordId(recordId);
 		return etr;
 	}

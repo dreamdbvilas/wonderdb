@@ -48,4 +48,14 @@ public class CollectionNameMeta implements DBType {
 	public DBType copyOf() {
 		throw new RuntimeException("Mehtod not supported");
 	}
+	
+	@Override
+	public int hashCode() {
+		throw new RuntimeException("Mehtod not supported");		
+	}
+	
+	@Override
+	public boolean equals(Object o) {
+		throw new RuntimeException("Mehtod not supported");
+	}
 }

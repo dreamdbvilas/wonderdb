@@ -62,12 +62,12 @@ public class DBUpdateQuery extends BaseDBQuery {
 		
 		filterNode = SimpleNodeHelper.getInstance().getFirstNode(query, UQLParserTreeConstants.JJTFILTEREXPRESSION);
 		
-		List<SimpleNode> updateSetNodes = new ArrayList<>();
+		List<SimpleNode> updateSetNodes = new ArrayList<SimpleNode>();
 		SimpleNodeHelper.getInstance().getNodes(query, UQLParserTreeConstants.JJTUPDATECOLUMN, updateSetNodes);
 		updateSetExpList = SimpleNodeHelper.getInstance().getUpdateSet(updateSetNodes, caList);
 		
-		List<SimpleNode> selectColumnNodeList = new ArrayList<>(); 
-		Map<CollectionAlias, List<Integer>> selectColumnList = new HashMap<>();
+		List<SimpleNode> selectColumnNodeList = new ArrayList<SimpleNode>(); 
+		Map<CollectionAlias, List<Integer>> selectColumnList = new HashMap<CollectionAlias, List<Integer>>();
 		
 		SimpleNodeHelper.getInstance().getNodes(query, UQLParserTreeConstants.JJTCOLUMNANDALIAS, selectColumnNodeList);
 		for (int i = 0; i < selectColumnNodeList.size(); i++) {
@@ -76,7 +76,7 @@ public class DBUpdateQuery extends BaseDBQuery {
 			
 			List<Integer> colList = selectColumnList.get(vo.getCollectionAlias());
 			if (colList == null) {
-				colList = new ArrayList<>();
+				colList = new ArrayList<Integer>();
 				selectColumnList.put(vo.getCollectionAlias(), colList);
 			}
 			colList.add(vo.getColumnId());
@@ -88,7 +88,7 @@ public class DBUpdateQuery extends BaseDBQuery {
 	}
 	
 	private List<CollectionAlias> getCaList(List<TableDef> list) {
-		List<CollectionAlias> retList = new ArrayList<>();
+		List<CollectionAlias> retList = new ArrayList<CollectionAlias>();
 		for (int i = 0; i < list.size(); i++) {
 			TableDef tDef = list.get(i);
 			CollectionAlias ca = new CollectionAlias(tDef.table, tDef.alias);
@@ -99,7 +99,7 @@ public class DBUpdateQuery extends BaseDBQuery {
 	}
 	
 	private Map<String, CollectionAlias> getFromMap(List<CollectionAlias> caList) {
-		Map<String, CollectionAlias> fromMap = new HashMap<>();
+		Map<String, CollectionAlias> fromMap = new HashMap<String, CollectionAlias>();
 		for (int i = 0; i < caList.size(); i++) {
 			CollectionAlias ca = caList.get(i);
 			fromMap.put(ca.getAlias(), ca);

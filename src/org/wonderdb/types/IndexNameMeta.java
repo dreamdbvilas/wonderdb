@@ -98,6 +98,15 @@ public class IndexNameMeta implements DBType {
 		throw new RuntimeException("Mehtod not supported");
 	}
 	
+	@Override
+	public int hashCode() {
+		throw new RuntimeException("Mehtod not supported");
+	}
+	
+	@Override
+	public boolean equals(Object o) {
+		throw new RuntimeException("Mehtod not supported");
+	}
 	public BTree getIndexTree(Shard shard) {
 		return tree;
 	}	

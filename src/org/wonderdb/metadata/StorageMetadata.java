@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 
 import org.wonderdb.cache.impl.CacheEntryPinner;
 import org.wonderdb.core.collection.ResultIterator;
@@ -26,8 +27,8 @@ import org.wonderdb.types.record.ListRecord;
 import org.wonderdb.types.record.ObjectListRecord;
 
 public class StorageMetadata {
-	private Map<Byte, FileBlockEntry> fileIdToEntryMap = new ConcurrentHashMap<>();
-	private Map<String, FileBlockEntry> fileNameToEntryMap = new ConcurrentHashMap<>();
+	private Map<Byte, FileBlockEntry> fileIdToEntryMap = new ConcurrentHashMap<Byte, FileBlockEntry>();
+	private ConcurrentMap<String, FileBlockEntry> fileNameToEntryMap = new ConcurrentHashMap<String, FileBlockEntry>();
 	private WonderDBList storageList = null;
 	private boolean initialized = false;
 	
@@ -38,13 +39,13 @@ public class StorageMetadata {
 	}
 	
 	public void init(boolean isNew) {
+		StorageMetadata.getInstance().initialized = true;
 		
 		if (isNew) {
 			create();
 		} else {
 			load();
 		}
-		StorageMetadata.getInstance().initialized = true;
 	}
 	
 	public void add(FileBlockEntry entry) {
@@ -53,7 +54,7 @@ public class StorageMetadata {
 		}
 
 		TransactionId txnId = LogManager.getInstance().startTxn();
-		Set<Object> pinnedBlocks = new HashSet<>();
+		Set<Object> pinnedBlocks = new HashSet<Object>();
 		
 		try {
 			entry.setFileId((byte) fileIdToEntryMap.size());
@@ -94,13 +95,20 @@ public class StorageMetadata {
 	}
 	
 	private void create() {
-		Set<Object> pinnedBlocks = new HashSet<>();
+		Set<Object> pinnedBlocks = new HashSet<Object>();
 		try {
 			FileBlockEntry entry = getDefaultFileBlockEntry();
 			addMeta(entry);
 			BlockPtr ptr = new SingleBlockPtr((byte) 0, 0);
 			storageList = WonderDBList.create("_storage", ptr, 1, null, pinnedBlocks);
 			defaultFileId = 0;
+//			
+//			FileBlockEntry fbe = null;
+//			fbe = new FileBlockEntry();
+//			fbe.setBlockSize(2048);
+//			fbe.setFileName("cacheIndex.data");
+//			StorageMetadata.getInstance().add(fbe);
+
 		} finally {
 			CacheEntryPinner.getInstance().unpin(pinnedBlocks, pinnedBlocks);
 		}
@@ -118,7 +126,7 @@ public class StorageMetadata {
 	}
 	
 	private void load() {
-		Set<Object> pinnedBlocks = new HashSet<>();
+		Set<Object> pinnedBlocks = new HashSet<Object>();
 		FileBlockEntry entry = null;
 		try {
 			entry = getDefaultFileBlockEntry();

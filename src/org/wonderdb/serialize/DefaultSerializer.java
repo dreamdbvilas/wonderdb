@@ -134,12 +134,12 @@ public class DefaultSerializer implements TypeSerializer {
 	public int getSize(DBType object, TypeMetadata meta) {
 		if (object instanceof StringType) {
 			String value = ((StringType) object).get();
-			return  1 + value.getBytes().length + Integer.BYTES;
+			return  1 + value.getBytes().length + Integer.SIZE/8;
 		} 
 		
 		if (object instanceof ByteArrayType) {
 			byte[] array = ((ByteArrayType) object).get();
-			return 1 + array.length + Integer.BYTES;
+			return 1 + array.length + Integer.SIZE/8;
 		}
 
 		if (object instanceof BlockPtr) {

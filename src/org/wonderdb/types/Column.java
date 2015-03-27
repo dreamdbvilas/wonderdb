@@ -36,4 +36,17 @@ public class Column implements DBType {
 	public DBType copyOf() {
 		return new Column(value.copyOf());
 	}
+	
+	@Override
+	public int hashCode() {
+		return value == null ? 0 : value.hashCode();
+	}
+	
+	@Override
+	public boolean equals(Object o) {
+		if (o instanceof DBType) {
+			return compareTo((DBType) o) == 0;
+		}
+		return false;
+	}
 }

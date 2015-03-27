@@ -12,7 +12,7 @@ import org.wonderdb.types.BlockPtr;
 
 public class FreeBlockFactory {
 	private static FreeBlockFactory instance = new FreeBlockFactory();
-	ConcurrentMap<Byte, FreeBlockMgrNew> freeBlocksMgrMap = new ConcurrentHashMap<>();
+	ConcurrentMap<Byte, FreeBlockMgrNew> freeBlocksMgrMap = new ConcurrentHashMap<Byte, FreeBlockMgrNew>();
 	ThreadPoolExecutorWrapper threadPool = new ThreadPoolExecutorWrapper(5, 5, 5, 10, "freeBlock");
 	static long val = 2048*100;
 	private FreeBlockFactory() {

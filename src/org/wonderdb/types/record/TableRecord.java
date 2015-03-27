@@ -46,7 +46,7 @@ public class TableRecord implements ListRecord  {
 //		throw new RuntimeException("Method not supported");
 		TableRecord record = new TableRecord(columnMap);
 		record.setRecordId(recordId);
-		record.columnMap = new HashMap<>(columnMap);
+		record.columnMap = new HashMap<Integer, DBType>(columnMap);
 		return record;
 	}
 
@@ -66,6 +66,16 @@ public class TableRecord implements ListRecord  {
 			}
 		}
 		return size;
+	}
+	
+	@Override
+	public int hashCode() {
+		throw new RuntimeException("Method not supported");
+	}
+
+	@Override
+	public boolean equals(Object o) {
+		throw new RuntimeException("Method not supported");
 	}
 
 }

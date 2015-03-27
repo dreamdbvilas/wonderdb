@@ -40,7 +40,7 @@ public class SerializerManager {
 	public static final int INDEX_NAME_META_TYPE = 12;
 	public static final int BYTE_ARRAY_TYPE = 13;
 	
-	private Map<Integer, TypeSerializer> map = new HashMap<>();
+	private Map<Integer, TypeSerializer> map = new HashMap<Integer, TypeSerializer>();
 	private static SerializerManager instance = new SerializerManager();
 	
 	private SerializerManager() {

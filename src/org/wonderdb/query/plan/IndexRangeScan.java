@@ -151,12 +151,12 @@ public class IndexRangeScan implements QueryPlan {
 			this.idx = idx;
 			this.collectionAlias = ca;
 
-			List<DBType> list = new ArrayList<>(idx.getColumnIdList().size());
+			List<DBType> list = new ArrayList<DBType>(idx.getColumnIdList().size());
 			for (int i = 0; i < idx.getColumnIdList().size(); i++) {
 				list.add(null);
 			}
 			min = new IndexKeyType(list, null);
-			list = new ArrayList<>(list);
+			list = new ArrayList<DBType>(list);
 			max = new IndexKeyType(list, null);
 			buildRange();
 

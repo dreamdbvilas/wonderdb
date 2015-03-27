@@ -38,7 +38,17 @@ public class ObjectListRecord implements ListRecord, ObjectRecord {
 	public int compareTo(DBType o) {
 		throw new RuntimeException("Method not supported");
 	}	
+	
+	@Override
+	public int hashCode() {
+		throw new RuntimeException("Method not supported");
+	}
 
+	@Override
+	public boolean equals(Object o) {
+		throw new RuntimeException("Method not supported");
+	}
+	
 	@Override
 	public int getResourceCount() {
 		int size = 0;

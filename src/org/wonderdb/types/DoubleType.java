@@ -56,11 +56,17 @@ public class DoubleType implements DBType {
 		return 0;
 	}
 	
+	@Override
 	public boolean equals(Object o) {
 		if (o instanceof DoubleType) {
 			return this.compareTo((DoubleType) o) == 0;
 		}
 		return false;
+	}
+	
+	@Override
+	public int hashCode() {
+		return value == null ? 0 : value.hashCode();
 	}
 
 	public String toString() {

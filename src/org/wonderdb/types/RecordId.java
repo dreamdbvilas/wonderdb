@@ -26,6 +26,7 @@ public class RecordId implements DBType {
 		this.posn = posn;
 	}
 	
+	@Override
 	public boolean equals(Object o) {
 		RecordId id = null;
 		if (o instanceof RecordId) {
@@ -38,6 +39,7 @@ public class RecordId implements DBType {
 		return compareTo(id) == 0 ? true : false;
 	}
 	
+	@Override
 	public int compareTo(DBType rId) {
 		RecordId recordId = null;
 		if (rId instanceof RecordId) {
@@ -53,6 +55,7 @@ public class RecordId implements DBType {
 		return c;
 	}
 
+	@Override
 	public int hashCode() {
 		return this.ptr.hashCode() + posn;
 	}

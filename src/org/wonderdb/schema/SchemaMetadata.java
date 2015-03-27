@@ -44,6 +44,7 @@ import org.wonderdb.types.CollectionNameMeta;
 import org.wonderdb.types.ColumnNameMeta;
 import org.wonderdb.types.ColumnSerializerMetadata;
 import org.wonderdb.types.DBType;
+import org.wonderdb.types.FileBlockEntry;
 import org.wonderdb.types.IndexNameMeta;
 import org.wonderdb.types.IndexRecordMetadata;
 import org.wonderdb.types.SingleBlockPtr;
@@ -57,7 +58,7 @@ public class SchemaMetadata {
 	int nextId = 0;
 	private ConcurrentHashMap<String, List<IndexNameMeta>> collectionIndexes = new ConcurrentHashMap<String, List<IndexNameMeta>>();
 	private ConcurrentHashMap<String, IndexNameMeta> indexByName = new ConcurrentHashMap<String, IndexNameMeta>();
-	private ConcurrentHashMap<String, CollectionMetadata> collections = new ConcurrentHashMap<>();
+	private ConcurrentHashMap<String, CollectionMetadata> collections = new ConcurrentHashMap<String, CollectionMetadata>();
 	private ConcurrentMap<String, String> functions = new ConcurrentHashMap<String, String>();
 	
 	WonderDBList objectList = null; // name, head, 
@@ -86,7 +87,7 @@ public class SchemaMetadata {
 	}
 	
 	public List<CollectionMetadata> getCollections() {
-		return new ArrayList<>(collections.values());
+		return new ArrayList<CollectionMetadata>(collections.values());
 	}
 	
 	public TypeMetadata getTypeMetadata(String collectionName) {
@@ -103,7 +104,7 @@ public class SchemaMetadata {
 		}
 		
 		TableRecordMetadata meta = new TableRecordMetadata();
-		Map<Integer, Integer> columnIdTypeMap = new HashMap<>();
+		Map<Integer, Integer> columnIdTypeMap = new HashMap<Integer, Integer>();
 		for (int i = 0; i < list.size(); i++) {
 			ColumnNameMeta cnm = list.get(i);
 			columnIdTypeMap.put(cnm.getCoulmnId(), cnm.getColumnType());
@@ -123,8 +124,8 @@ public class SchemaMetadata {
 			irm.setTypeList(meta.getColumnIdList());
 		} else {
 			CollectionMetadata colMeta = SchemaMetadata.getInstance().getCollectionMetadata(meta.getCollectionName());
-			List<Integer> colTypeList = new ArrayList<>();
-			List<Integer> colIdList = new ArrayList<>();
+			List<Integer> colTypeList = new ArrayList<Integer>();
+			List<Integer> colIdList = new ArrayList<Integer>();
 			for (int i = 0; i < meta.getColumnIdList().size(); i++) {
 				int colId = meta.getColumnIdList().get(i);
 				ColumnNameMeta cnm = colMeta.columnIdToNameMap.get(colId);
@@ -142,7 +143,7 @@ public class SchemaMetadata {
 		List<ColumnNameMeta> newColumns = colMeta.addColumns(columns);
 		if (newColumns.size() > 0) {
 			TransactionId txnId = LogManager.getInstance().startTxn();
-			Set<Object> pinnedBlocks = new HashSet<>();
+			Set<Object> pinnedBlocks = new HashSet<Object>();
 			try {
 				for (int i = 0; i < newColumns.size(); i++) {
 					DBType column = newColumns.get(i);
@@ -158,7 +159,7 @@ public class SchemaMetadata {
 	
 	private void create() {
 		TransactionId txnId = LogManager.getInstance().startTxn();
-		Set<Object> pinnedBlocks = new HashSet<>();
+		Set<Object> pinnedBlocks = new HashSet<Object>();
 		try {
 			BlockPtr ptr = new SingleBlockPtr((byte) 0, 1*WonderDBPropertyManager.getInstance().getDefaultBlockSize());
 			objectList = WonderDBList.create("_object", ptr, 1, txnId, pinnedBlocks);
@@ -168,37 +169,7 @@ public class SchemaMetadata {
 			
 			ptr = new SingleBlockPtr((byte) 0, 3*WonderDBPropertyManager.getInstance().getDefaultBlockSize());
 			indexList = WonderDBList.create("_index", ptr, 1, txnId, pinnedBlocks);
-			
-			List<ColumnNameMeta> columns = new ArrayList<>();
-			ColumnNameMeta cnm = new ColumnNameMeta();
-			cnm.setCollectioName("cache");
-			cnm.setColumnName("key");
-			cnm.setColumnType(SerializerManager.BYTE_ARRAY_TYPE);
-			cnm.setCoulmnId(0);
-			columns.add(cnm);
-			cnm = new ColumnNameMeta();
-			cnm.setCollectioName("cache");
-			cnm.setColumnName("value");
-			cnm.setColumnType(SerializerManager.BYTE_ARRAY_TYPE);
-			cnm.setCoulmnId(1);
-			columns.add(cnm);
-			
-			createNewCollection("cache", null, columns, 10);
-			
-			IndexNameMeta inm = new IndexNameMeta();
-			inm.setIndexName("cacheIndex");
-			inm.setAscending(true);
-			inm.setUnique(true);
-			inm.setCollectionName("cache");
-			List<Integer> columnIdList = new ArrayList<>();
-			columnIdList.add(0);
-			inm.setColumnIdList(columnIdList);
-			String storageFile = StorageMetadata.getInstance().getDefaultFileName();
-			createNewIndex(inm, storageFile);
-			
-		} catch (InvalidCollectionNameException e) {
-			// TODO Auto-generated catch block
-			e.printStackTrace();
+									
 		} finally {
 			LogManager.getInstance().commitTxn(txnId);
 			CacheEntryPinner.getInstance().unpin(pinnedBlocks, pinnedBlocks);
@@ -206,11 +177,11 @@ public class SchemaMetadata {
 	}
 	
 	private void load() {
-		Set<Object> pinnedBlocks = new HashSet<>();
+		Set<Object> pinnedBlocks = new HashSet<Object>();
 		
 		try {
-			Map<String, CollectionNameMeta> map = new HashMap<>();
-			Map<String, List<ColumnNameMeta>> collectionColumnMap = new HashMap<>();
+			Map<String, CollectionNameMeta> map = new HashMap<String, CollectionNameMeta>();
+			Map<String, List<ColumnNameMeta>> collectionColumnMap = new HashMap<String, List<ColumnNameMeta>>();
 			
 			BlockPtr ptr = new SingleBlockPtr((byte) 0, 1*WonderDBPropertyManager.getInstance().getDefaultBlockSize());
 			objectList = WonderDBList.load("_object", ptr, 1, new ColumnSerializerMetadata(SerializerManager.BLOCK_PTR_LIST_TYPE), pinnedBlocks);
@@ -238,7 +209,7 @@ public class SchemaMetadata {
 					cnm.setRecId(record.getRecordId());
 					List<ColumnNameMeta> list = collectionColumnMap.get(cnm.getCollectioName());
 					if (list == null) {
-						list = new ArrayList<>();
+						list = new ArrayList<ColumnNameMeta>();
 						collectionColumnMap.put(cnm.getCollectioName(), list);
 					}
 					list.add(cnm);
@@ -275,7 +246,7 @@ public class SchemaMetadata {
 					indexByName.put(inm.getIndexName(), inm);
 					List<IndexNameMeta> list = collectionIndexes.get(inm.getCollectionName());
 					if (list == null) {
-						list = new ArrayList<>();
+						list = new ArrayList<IndexNameMeta>();
 						collectionIndexes.put(inm.getCollectionName(), list);
 					}
 					list.add(inm);
@@ -293,7 +264,7 @@ public class SchemaMetadata {
 		cnm.setCollectioName(id);
 		cnm.setColumnName("_internal");
 		cnm.setColumnType(meta.getColumnId());
-		List<ColumnNameMeta> list = new ArrayList<>();
+		List<ColumnNameMeta> list = new ArrayList<ColumnNameMeta>();
 		list.add(cnm);
 		
 		CollectionMetadata colMeta = createNewCollection(id, null, list, concurrentSize);
@@ -301,7 +272,7 @@ public class SchemaMetadata {
 	}
 	
 	public CollectionMetadata createNewCollection(String collectionName, String fileName, List<ColumnNameMeta> columns, int concurrentSize) throws InvalidCollectionNameException {
-		Set<Object> pinnedBlocks = new HashSet<>();
+		Set<Object> pinnedBlocks = new HashSet<Object>();
 		TransactionId txnId = LogManager.getInstance().startTxn();
 		try {
 			String storageFile = StorageMetadata.getInstance().getDefaultFileName();
@@ -339,7 +310,7 @@ public class SchemaMetadata {
 	}
 	
 	public BTree createBTree(String name, boolean unique, int type) {
-		List<Integer> columnIdList = new ArrayList<>();
+		List<Integer> columnIdList = new ArrayList<Integer>();
 		columnIdList.add(type);
 		
 		IndexNameMeta inm = new IndexNameMeta();
@@ -361,7 +332,7 @@ public class SchemaMetadata {
 			return temp;
 		}
 		TransactionId txnId = LogManager.getInstance().startTxn();
-		Set<Object> pinnedBlocks = new HashSet<>();
+		Set<Object> pinnedBlocks = new HashSet<Object>();
 		try {
 			byte fileId = StorageMetadata.getInstance().getFileId(storageFile);
 			long posn = FileBlockManager.getInstance().getNextBlock(fileId);
@@ -375,7 +346,7 @@ public class SchemaMetadata {
 			indexList.add(record, txnId, new ColumnSerializerMetadata(SerializerManager.INDEX_NAME_META_TYPE), pinnedBlocks);
 			List<IndexNameMeta> list = collectionIndexes.get(inm.getCollectionName());
 			if (list == null) {
-				list = new ArrayList<>();
+				list = new ArrayList<IndexNameMeta>();
 				collectionIndexes.put(inm.getCollectionName(), list);
 			}
 			list.add(inm);

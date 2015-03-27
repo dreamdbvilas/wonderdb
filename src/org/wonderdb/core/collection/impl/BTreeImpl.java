@@ -133,15 +133,17 @@ public class BTreeImpl implements BTree {
 	@Override
 	public ResultIterator getHead(boolean writeLock, Set<Object> pinnedBlocks) {
 		readLock();
-		IndexBlock headBlock = (IndexBlock) BlockManager.getInstance().getBlock(treeHead, meta, pinnedBlocks);
-		IndexBlock rootBlock = (IndexBlock) BlockManager.getInstance().getBlock(root, meta, pinnedBlocks);
-		if (writeLock) {
-			rootBlock.writeLock();
-		} else {
-			rootBlock.readLock();
+		try {
+			IndexBlock headBlock = (IndexBlock) BlockManager.getInstance().getBlock(treeHead, meta, pinnedBlocks);
+			if (writeLock) {
+				headBlock.writeLock();
+			} else {
+				headBlock.readLock();
+			}
+			return new BTreeIteratorImpl(new BlockEntryPosition(headBlock, 0), this, writeLock, false, meta);
+		} finally {
+			readUnlock();
 		}
-		headBlock.readLock();
-		return new BTreeIteratorImpl(new BlockEntryPosition(headBlock, 0), this, writeLock, false, meta);
 	}
 	
 	@Override
@@ -177,7 +179,7 @@ public class BTreeImpl implements BTree {
 		Set<Block> cBlocks = new HashSet<Block>();
 		BTreeIteratorImpl iter = null;
 		ObjectRecord data = null;
-		Stack<BlockPtr> callBlockStack = new Stack<>();
+		Stack<BlockPtr> callBlockStack = new Stack<BlockPtr>();
 		try {
 			if (readLock) {
 				readLock();
@@ -215,7 +217,7 @@ public class BTreeImpl implements BTree {
 
 			if (!root.equals(changedBlock.getPtr()) && changedBlock.getData().size() == 0) {
 				// split
-				Set<IndexBlock> changedBlocks = new HashSet<>();
+				Set<IndexBlock> changedBlocks = new HashSet<IndexBlock>();
 				changedBlocks.add(changedBlock);
 				removeRebalance(changedBlock, changedBlocks, findPinnedBlocks, txnId, callBlockStack);
 				
@@ -434,7 +436,7 @@ public class BTreeImpl implements BTree {
 	public ResultIterator find(IndexQuery entry, boolean writeLock, Set<Object> pBlocks) {
 		Set<Object> pinnedBlocks = new HashSet<Object>();
 		ResultIterator iter = null;
-		Stack<BlockPtr> stack = new Stack<>();
+		Stack<BlockPtr> stack = new Stack<BlockPtr>();
 		try {
 			readLock();
 			BlockEntryPosition bep = null;
@@ -506,7 +508,7 @@ public class BTreeImpl implements BTree {
 			} else {
 				writeLock();
 			}
-			Stack<BlockPtr> callBlockStack = new Stack<>();
+			Stack<BlockPtr> callBlockStack = new Stack<BlockPtr>();
 			try {
 				IndexBlock rootBlock = (IndexBlock) BlockManager.getInstance().getBlock(root, meta, pinnedBlocks);
 				bep = rootBlock.find(query, true, findPinnedBlocks, callBlockStack);

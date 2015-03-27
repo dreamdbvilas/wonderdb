@@ -60,8 +60,8 @@ public class DBDeleteQuery extends BaseDBQuery {
 		CollectionMetadata colMeta = SchemaMetadata.getInstance().getCollectionMetadata(getCollection());
 		List<ColumnNameMeta> selectColumns = colMeta.getCollectionColumns();
 		CollectionAlias ca = caList.get(0);
-		List<Integer> columnIdList = new ArrayList<>(selectColumns.size());
-		Map<CollectionAlias, List<Integer>> selectColumnList = new HashMap<>();
+		List<Integer> columnIdList = new ArrayList<Integer>(selectColumns.size());
+		Map<CollectionAlias, List<Integer>> selectColumnList = new HashMap<CollectionAlias, List<Integer>>();
 		selectColumnList.put(ca, columnIdList);
 		for (int i = 0; i < selectColumns.size(); i++) {
 			ColumnNameMeta cnm = selectColumns.get(i);
@@ -76,7 +76,7 @@ public class DBDeleteQuery extends BaseDBQuery {
 	}
 	
 	private List<CollectionAlias> getCaList(List<TableDef> list) {
-		List<CollectionAlias> retList = new ArrayList<>();
+		List<CollectionAlias> retList = new ArrayList<CollectionAlias>();
 		for (int i = 0; i < list.size(); i++) {
 			TableDef tDef = list.get(i);
 			CollectionAlias ca = new CollectionAlias(tDef.table, tDef.alias);
@@ -87,7 +87,7 @@ public class DBDeleteQuery extends BaseDBQuery {
 	}
 	
 	private Map<String, CollectionAlias> getFromMap(List<CollectionAlias> caList) {
-		Map<String, CollectionAlias> fromMap = new HashMap<>();
+		Map<String, CollectionAlias> fromMap = new HashMap<String, CollectionAlias>();
 		for (int i = 0; i < caList.size(); i++) {
 			CollectionAlias ca = caList.get(i);
 			fromMap.put(ca.getAlias(), ca);

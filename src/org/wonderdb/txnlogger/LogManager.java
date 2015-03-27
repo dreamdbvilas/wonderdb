@@ -40,10 +40,10 @@ import org.wonderdb.types.BlockPtr;
 
 public class LogManager {
 	AtomicInteger at = new AtomicInteger();
-	Set<Integer> committingTxns = new HashSet<>();
+	Set<Integer> committingTxns = new HashSet<Integer>();
 	Map<BlockPtr, SerializedBlockImpl> blockPtrBlockMap = new HashMap<BlockPtr, SerializedBlockImpl>();
 	
-	Map<Integer, Set<BlockPtr>> blockPtrsInTxn = new HashMap<>();
+	Map<Integer, Set<BlockPtr>> blockPtrsInTxn = new HashMap<Integer, Set<BlockPtr>>();
 	
 	List<RandomAccessFile> logFiles = new ArrayList<RandomAccessFile>();
 	int currentFilePosn = 0;
@@ -90,7 +90,7 @@ public class LogManager {
 			return null;
 		}
 		TransactionId txnId = new TransactionId(at.getAndAdd(1));
-		Set<BlockPtr> ptrList = new HashSet<>();
+		Set<BlockPtr> ptrList = new HashSet<BlockPtr>();
 		blockPtrsInTxn.put(txnId.getId(), ptrList);
 		return txnId;
 	}
@@ -147,7 +147,7 @@ public class LogManager {
 	}
 	
 	private synchronized void logTransaction(int txnId) {
-		Set<Integer> dependentTxns = new HashSet<>();
+		Set<Integer> dependentTxns = new HashSet<Integer>();
 		while (true) {
 			if (!committingTxns.contains(txnId)) {
 				return;
@@ -163,7 +163,7 @@ public class LogManager {
 			}
 		}
 		
-		Set<BlockPtr> bpList = new HashSet<>();
+		Set<BlockPtr> bpList = new HashSet<BlockPtr>();
 		bpList.addAll(blockPtrsInTxn.remove(txnId));
 		
 		Iterator<Integer> iter = dependentTxns.iterator();
@@ -201,7 +201,7 @@ public class LogManager {
 		}
 		
 		ChannelBuffer buffer = ChannelBuffers.wrappedBuffer(buffers);		
-		ChannelBuffer header = ChannelBuffers.buffer(Integer.BYTES*2);
+		ChannelBuffer header = ChannelBuffers.buffer((Integer.SIZE/8)*2);
 		header.writeInt(buffer.capacity());
 		header.writeInt(buffer.hashCode());
 

@@ -31,7 +31,7 @@ import org.wonderdb.types.FileBlockEntry;
 public class FileBlockManager {
 	
 	private static FileBlockManager instance = new FileBlockManager();
-	Map<Byte, FileBlockEntry> fileIdToBlockMap = new HashMap<>();
+	Map<Byte, FileBlockEntry> fileIdToBlockMap = new HashMap<Byte, FileBlockEntry>();
 	Map<Byte, BlockingQueue<Long>> pointerPoolMap = new HashMap<Byte, BlockingQueue<Long>>();
 	
 	byte defaultFileId = -1;

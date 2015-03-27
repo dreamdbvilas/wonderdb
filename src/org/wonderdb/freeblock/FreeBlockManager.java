@@ -37,7 +37,7 @@ class FreeBlockMgrNew {
 	int highWatermark;
 	AtomicBoolean backendSyncRunning = new AtomicBoolean(false);
 	IndexBranchBlock currentBlock = null;
-	List<BlockPtr> freePtrList = new ArrayList<>();
+	List<BlockPtr> freePtrList = new ArrayList<BlockPtr>();
 	
 	FreeBlockMgrNew(byte fileId, int lowWatermarkMultiplier, int highWatermarkMultiplier) {
 //		Set<Object> pinnedBlocks = new HashSet<>();
@@ -110,7 +110,7 @@ class FreeBlockMgrNew {
 			return;
 		}
 		
-		Set<Object> pinnedBlocks = new HashSet<>();
+		Set<Object> pinnedBlocks = new HashSet<Object>();
 		SerializedBlockImpl sb = null;
 		
 		try {
@@ -170,12 +170,12 @@ class FreeBlockMgrNew {
 	}
 	
 	public void write() {
-		Set<Object> pinnedBlocks = new HashSet<>();
+		Set<Object> pinnedBlocks = new HashSet<Object>();
 		
 		if (!backendSyncRunning.compareAndSet(false, true)) {
 			return;
 		}
-		List<BlockPtr> writeList = new ArrayList<>();
+		List<BlockPtr> writeList = new ArrayList<BlockPtr>();
 		
 		for (int i = 0; i < freePosnsSize; i++) {
 			writeList.add(freePtrList.get(0));

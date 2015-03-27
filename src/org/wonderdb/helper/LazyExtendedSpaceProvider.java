@@ -39,7 +39,7 @@ public class LazyExtendedSpaceProvider {
 	public ChannelBuffer provideSpaceToRead(List<BlockPtr> extendedPtrs, Set<Object> pinnedBlocks) {
 		BlockPtr currentPtr = extendedPtrs.get(0);
 		Cacheable<BlockPtr, ChannelBuffer> currentBlock = null;
-		List<ChannelBuffer> list = new ArrayList<>();
+		List<ChannelBuffer> list = new ArrayList<ChannelBuffer>();
 		
 		while (true) {
 			if (currentPtr == null) {
@@ -72,7 +72,7 @@ public class LazyExtendedSpaceProvider {
 	}
 	
 	public ChannelBuffer provideSpaceToWrite(byte fileId, List<BlockPtr> list, int requiredBlocks, Set<Object> pinnedBlocks) {		
-		List<ChannelBuffer> buffers = new ArrayList<>();
+		List<ChannelBuffer> buffers = new ArrayList<ChannelBuffer>();
 
 		Cacheable<BlockPtr, ChannelBuffer> block = null;
 		while (list.size() > requiredBlocks) {

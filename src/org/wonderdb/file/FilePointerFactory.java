@@ -25,57 +25,58 @@ import java.nio.file.OpenOption;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.ThreadPoolExecutor;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.ConcurrentHashMap;
 
 import org.wonderdb.server.WonderDBPropertyManager;
 import org.wonderdb.thread.WonderDBThreadFactory;
 import org.wonderdb.types.FileBlockEntry;
 
 public class FilePointerFactory {
-	private Map<Byte, AsynchronousFileChannel> asyncChannelMap = new HashMap<>();
-	private Map<Byte, BlockingQueue<FileChannel>> syncChannelMap = new HashMap<>();
-	private Map<Byte, RandomAccessFile> fileMap = new HashMap<>();
+	private Map<Byte, AsynchronousFileChannel> asyncChannelMap = new ConcurrentHashMap<Byte, AsynchronousFileChannel>();
+	private Map<Byte, BlockingQueue<FileChannel>> syncChannelMap = new ConcurrentHashMap<Byte, BlockingQueue<FileChannel>>();
+	private Map<Byte, RandomAccessFile> fileMap = new ConcurrentHashMap<Byte, RandomAccessFile>();
 	
-	ExecutorService executor = null;
+//	ExecutorService executor = null;
 	private static FilePointerFactory pool = new FilePointerFactory();
 	
 	private FilePointerFactory() {
 		int asyncCoreSize = WonderDBPropertyManager.getInstance().getDiskAsyncWriterThreadPoolSize();
 		WonderDBThreadFactory t = new WonderDBThreadFactory("diskAsyncWriter");
-		executor = new ThreadPoolExecutor (asyncCoreSize, asyncCoreSize, 5, TimeUnit.MINUTES, new ArrayBlockingQueue<Runnable>(20), t);
+//		executor = new ThreadPoolExecutor (asyncCoreSize, asyncCoreSize, 5, TimeUnit.MINUTES, new ArrayBlockingQueue<Runnable>(20), t);
 	}
 	
 	public static FilePointerFactory getInstance() {
 		return pool;
 	}
 	
+	public void shutdown() {
+//		executor.shutdown();
+	}
+	
 	public void create(FileBlockEntry entry) {
 		Path path = Paths.get(entry.getFileName());
 		AsynchronousFileChannel afc = null;
 		try {
-			Set<OpenOption> set = new HashSet<>();
+			Set<OpenOption> set = new HashSet<OpenOption>();
 			set.add(StandardOpenOption.READ);
 			set.add(StandardOpenOption.WRITE);
 			set.add(StandardOpenOption.CREATE);
 			
-//				afc = AsynchronousFileChannel.open(path, StandardOpenOption.READ, StandardOpenOption.WRITE, StandardOpenOption.CREATE, executor);
-			afc = AsynchronousFileChannel.open(path, set, executor);
+			afc = AsynchronousFileChannel.open(path, StandardOpenOption.READ, StandardOpenOption.WRITE, StandardOpenOption.CREATE);
+//			afc = AsynchronousFileChannel.open(path, set, executor);
 			asyncChannelMap.put(entry.getFileId(), afc);
 		} catch (IOException e) {
 			e.printStackTrace();
 			throw new RuntimeException(e);
 		}
 		
-		BlockingQueue<FileChannel> q1 = new ArrayBlockingQueue<>(5);
+		BlockingQueue<FileChannel> q1 = new ArrayBlockingQueue<FileChannel>(5);
 		syncChannelMap.put(entry.getFileId(), q1);
 		for (int i = 0; i < 5; i++) {
 			path = Paths.get(entry.getFileName());
@@ -102,7 +103,7 @@ public class FilePointerFactory {
 	}
 	
 	public synchronized void closAll() {
-		executor.shutdownNow();
+//		executor.shutdownNow();
 		
 		Iterator<BlockingQueue<FileChannel>> syncIter = syncChannelMap.values().iterator();
 		while (syncIter.hasNext()) {

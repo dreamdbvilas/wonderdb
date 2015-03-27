@@ -45,6 +45,7 @@ public class LongType implements DBType {
 		}
 	}
 	
+	@Override
 	public int compareTo(DBType k) {
 		LongType lt = null;
 		if (k instanceof LongType) {
@@ -62,11 +63,17 @@ public class LongType implements DBType {
 		return 0;
 	}
 
+	@Override
 	public boolean equals(Object o) {
 		if (o instanceof LongType) {
 			return this.compareTo((LongType) o) == 0;
 		}
 		return false;
+	}
+	
+	@Override
+	public int hashCode() {
+		return value == null ? 0 : value.hashCode();
 	}
 
 	public String toString() {
