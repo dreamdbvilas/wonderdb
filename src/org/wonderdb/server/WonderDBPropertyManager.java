@@ -59,6 +59,10 @@ public class WonderDBPropertyManager {
 	
 	private static final String KAFKA_BROKER_LIST = "kafka.broker.list";
 	private static final String KAFKA_REPLICATION_ENABLED = "kafka.replication.enabled";
+	
+	private static final String CACHE_STORAGE = "cache.storage";
+	private static final String CACHE_INDEX_STORAGE = "cacheIndex.storage";
+	
 
 	private static WonderDBPropertyManager instance = new WonderDBPropertyManager();
 	private boolean initialized = false;
@@ -477,5 +481,13 @@ public class WonderDBPropertyManager {
 			return 5;
 		}
 		return Integer.parseInt(val);
+	}
+
+	public String getCacheStorage() {
+		return properties.getProperty(CACHE_STORAGE);
+	}
+	
+	public String getCacheIndexStorage() {
+		return properties.getProperty(CACHE_INDEX_STORAGE);
 	}
 }

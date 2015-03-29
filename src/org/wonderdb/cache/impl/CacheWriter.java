@@ -24,7 +24,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.Future;
-import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
@@ -33,6 +32,7 @@ import org.jboss.netty.buffer.ChannelBuffer;
 import org.jboss.netty.buffer.ChannelBuffers;
 import org.wonderdb.cache.CacheDestinationWriter;
 import org.wonderdb.cache.Cacheable;
+import org.wonderdb.server.WonderDBPropertyManager;
 import org.wonderdb.txnlogger.LogManager;
 
 
@@ -48,7 +48,7 @@ public class CacheWriter<Key, Data> extends Thread{
 	boolean shutdownOver = false;
 	Thread currentThread = null;
 	Object shutdownLock = new Object();
-	
+	int shutc = 0;
 	public CacheWriter(MemoryCacheMap<Key, Data> cacheMap, int writerFrequency, CacheDestinationWriter<Key, Data> writer) {
 		this.cacheMap = cacheMap;
 		this.writerFrequency = writerFrequency;
@@ -77,15 +77,16 @@ public class CacheWriter<Key, Data> extends Thread{
 		}
 	}
 	
-	public void forceStartWriting() {
-		if (writerFrequency > 0) {
-			currentThread.interrupt();
-		}
-	}
-	
+//	public void forceStartWriting() {
+//		if (writerFrequency > 0) {
+//			currentThread.interrupt();
+//		}
+//	}
+//	
 	@Override
 	public void run() {
-		currentThread = Thread.currentThread();
+//		currentThread = Thread.currentThread();
+		long timeTaken = 0;
 		while (true) {
 			try {
 				if (!isShutdown) {
@@ -98,7 +99,9 @@ public class CacheWriter<Key, Data> extends Thread{
 						}
 					} else {
 						try {
-							Thread.sleep(writerFrequency);
+							if (timeTaken < writerFrequency) {
+								Thread.sleep((writerFrequency-timeTaken));
+							}
 						} catch (InterruptedException e) {
 						}
 					}
@@ -107,29 +110,29 @@ public class CacheWriter<Key, Data> extends Thread{
 				Iterator<Key> iter = cacheMap.writtenBlocks.keySet().iterator();
 				Set<Object> pinnedBlocks = new HashSet<Object>();
 				inprocessSyncTime = -1;
-				Set<Key> writtenBlocks = new HashSet<Key>();
+//				Set<Key> writtenBlocks = new HashSet<Key>();
 				Map<Key, Data> bufferMap = new HashMap<Key, Data>();
 				
+				long start = System.currentTimeMillis();
 				while (iter.hasNext()) {
 					Key ptr = iter.next();
 					cacheMap.getBucket(ptr, true);
 					try {
 						
-						if (!CacheEntryPinner.getInstance().isPinned(ptr) && cacheMap.writtenBlocks.get(ptr) != 1) {
+//						if (!CacheEntryPinner.getInstance().isPinned(ptr) && cacheMap.writtenBlocks.get(ptr) != 1) {
+						if (!CacheEntryPinner.getInstance().isPinned(ptr)) {
 							CacheEntryPinner.getInstance().pin(ptr, pinnedBlocks);
 							Cacheable<Key, Data> block = cacheMap.get(ptr);
 							if (block == null) {
 								continue;
 							}
-							boolean flag = cacheMap.writtenBlocks.replace(ptr, 0, 1);
+							cacheMap.writtenBlocks.put(ptr, 1);
 							Data data = null;
-							if (flag) {								
+//							if (flag) {								
 								data = writer.copy(ptr, block.getFull());
 								bufferMap.put(ptr, data);
 //								flag = cacheMap.writtenBlocks.replace(ptr, 1, 2);
-							} else {
-								continue;
-							}
+//							}
 //							if (flag) {
 //								while (true) {
 //									try {
@@ -141,61 +144,70 @@ public class CacheWriter<Key, Data> extends Thread{
 //								}
 //							}
 						}
-						writtenBlocks.add(ptr);
+//						writtenBlocks.add(ptr);
 					} finally {
 						cacheMap.returnBucket(ptr, true);
 						CacheEntryPinner.getInstance().unpin(ptr, pinnedBlocks);
-//						if (bufferMap.size() >= 5) {
-							Iterator<Key> iter1 = bufferMap.keySet().iterator();
-							List<Future<Integer>> futures = new ArrayList<Future<Integer>>();
-							while (iter1.hasNext()) {
-								Key key = iter1.next();
-								Data data = bufferMap.get(key);
-								boolean flag = cacheMap.writtenBlocks.replace(key, 1, 2);
-								if (flag) {
-									while (true) {
-										try {
-											Future<Integer> future = writer.write(key, data);
-											futures.add(future);
-											break;
-										} catch (RejectedExecutionException e) {
-											for (int i = 0; i < futures.size(); i++) {
-												futures.get(i).get();
-											}
-		//									Thread.sleep(100);									
+//						pinnedBlocks.clear();
+					}
+					
+					Set<Key> writtenBlocks = new HashSet<>();
+					int size = WonderDBPropertyManager.getInstance().getDiskAsyncWriterThreadPoolSize();
+					if (bufferMap.size() >= size || isShutdown) {
+						Iterator<Key> iter1 = bufferMap.keySet().iterator();
+						List<Future<Integer>> futures = new ArrayList<Future<Integer>>();
+						while (iter1.hasNext()) {
+							Key key = iter1.next();
+							Data data = bufferMap.get(key);
+							boolean flag = cacheMap.writtenBlocks.replace(key, 1, 2);
+							if (flag) {
+								while (true) {
+									try {
+										Future<Integer> future = writer.write(key, data);
+										futures.add(future);
+										break;
+									} catch (Throwable e) {
+										for (int i = 0; i < futures.size(); i++) {
+											futures.get(i).get();
 										}
+	//									Thread.sleep(100);									
 									}
-									
 								}
+								writtenBlocks.add(key);
 							}
-	
-							for (int i = 0; i < futures.size(); i++) {
-								futures.get(i).get();
+						}
+
+						for (int i = 0; i < futures.size(); i++) {
+							futures.get(i).get();
+						}
+						
+						iter1 = writtenBlocks.iterator();
+						while (iter1.hasNext()) {
+							Key ptr1 = iter1.next();
+							boolean flag = cacheMap.writtenBlocks.remove(ptr1, 2);
+							if (flag) {
+								bufferMap.remove(ptr1);
 							}
-							
-							iter1 = writtenBlocks.iterator();
-							while (iter1.hasNext()) {
-								Key ptr1 = iter1.next();
-								cacheMap.writtenBlocks.remove(ptr1, 2);
-							}
-							bufferMap.clear();
-							writtenBlocks.clear();
-						}								
-//					}
+						}
+//						bufferMap.clear();
+//						writtenBlocks.clear();
+					}								
+
 				}
+				timeTaken = System.currentTimeMillis()-start;
 
 
 				syncTime = Math.max(syncTime, inprocessSyncTime);
 				LogManager.getInstance().resetLogs(syncTime);
 				if (isShutdown) {
-					shutdownOver = true;
 					System.out.println("didnt write: "+cacheMap.writtenBlocks.size());
-					synchronized (shutdownLock) {
-						shutdownLock.notifyAll();
-					}
-					if (cacheMap.writtenBlocks.size()>0) {
+					if (cacheMap.writtenBlocks.size()>0 && shutc++ <= 5) {
 						continue; 
 					} else {
+						shutdownOver = true;
+						synchronized (shutdownLock) {
+							shutdownLock.notifyAll();
+						}
 						return;
 					}
 				}

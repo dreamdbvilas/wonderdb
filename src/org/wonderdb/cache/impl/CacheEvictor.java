@@ -16,9 +16,7 @@ package org.wonderdb.cache.impl;
  *    limitations under the License.
  *******************************************************************************/
 
-import java.util.HashSet;
 import java.util.List;
-import java.util.Set;
 
 import org.wonderdb.cache.Cacheable;
 

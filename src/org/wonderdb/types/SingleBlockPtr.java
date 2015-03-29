@@ -15,11 +15,15 @@
  *******************************************************************************/
 package org.wonderdb.types;
 
+import org.wonderdb.server.WonderDBPropertyManager;
+
 
 public class SingleBlockPtr implements BlockPtr, Serializable {
 	long posn;
 	byte fileId;
 
+	private static int blockSize = WonderDBPropertyManager.getInstance().getDefaultBlockSize();
+	
 	public SingleBlockPtr(byte fileId, long posn) {
 		this.posn = posn;
 		this.fileId = fileId;
@@ -51,7 +55,7 @@ public class SingleBlockPtr implements BlockPtr, Serializable {
 
 	@Override
 	public int hashCode() {
-		int i = (int) posn+fileId+Integer.MAX_VALUE;
+		int i = (int) (posn/blockSize)+fileId;
 		if (i == Integer.MIN_VALUE) {
 			i = 0;
 		}

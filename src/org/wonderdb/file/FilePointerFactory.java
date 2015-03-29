@@ -32,6 +32,9 @@ import java.util.Set;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 
 import org.wonderdb.server.WonderDBPropertyManager;
 import org.wonderdb.thread.WonderDBThreadFactory;
@@ -42,13 +45,13 @@ public class FilePointerFactory {
 	private Map<Byte, BlockingQueue<FileChannel>> syncChannelMap = new ConcurrentHashMap<Byte, BlockingQueue<FileChannel>>();
 	private Map<Byte, RandomAccessFile> fileMap = new ConcurrentHashMap<Byte, RandomAccessFile>();
 	
-//	ExecutorService executor = null;
+	ExecutorService executor = null;
 	private static FilePointerFactory pool = new FilePointerFactory();
 	
 	private FilePointerFactory() {
 		int asyncCoreSize = WonderDBPropertyManager.getInstance().getDiskAsyncWriterThreadPoolSize();
 		WonderDBThreadFactory t = new WonderDBThreadFactory("diskAsyncWriter");
-//		executor = new ThreadPoolExecutor (asyncCoreSize, asyncCoreSize, 5, TimeUnit.MINUTES, new ArrayBlockingQueue<Runnable>(20), t);
+		executor = new ThreadPoolExecutor (asyncCoreSize, asyncCoreSize, 5, TimeUnit.MINUTES, new ArrayBlockingQueue<Runnable>(20), t);
 	}
 	
 	public static FilePointerFactory getInstance() {
@@ -68,8 +71,8 @@ public class FilePointerFactory {
 			set.add(StandardOpenOption.WRITE);
 			set.add(StandardOpenOption.CREATE);
 			
-			afc = AsynchronousFileChannel.open(path, StandardOpenOption.READ, StandardOpenOption.WRITE, StandardOpenOption.CREATE);
-//			afc = AsynchronousFileChannel.open(path, set, executor);
+//			afc = AsynchronousFileChannel.open(path, StandardOpenOption.READ, StandardOpenOption.WRITE, StandardOpenOption.CREATE);
+			afc = AsynchronousFileChannel.open(path, set, executor);
 			asyncChannelMap.put(entry.getFileId(), afc);
 		} catch (IOException e) {
 			e.printStackTrace();
@@ -103,7 +106,7 @@ public class FilePointerFactory {
 	}
 	
 	public synchronized void closAll() {
-//		executor.shutdownNow();
+		executor.shutdownNow();
 		
 		Iterator<BlockingQueue<FileChannel>> syncIter = syncChannelMap.values().iterator();
 		while (syncIter.hasNext()) {

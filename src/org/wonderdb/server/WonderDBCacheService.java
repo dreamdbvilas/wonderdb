@@ -114,12 +114,23 @@ public class WonderDBCacheService {
 		} else {
 			StorageMetadata.getInstance().init(true);
 			SchemaMetadata.getInstance().init(true);
-						
-			FileBlockEntry fbe = new FileBlockEntry();
-			fbe.setBlockSize(2048);
-			fbe.setFileName("cache.data");
-			StorageMetadata.getInstance().add(fbe);
-
+			
+			String cacheStorage = WonderDBPropertyManager.getInstance().getCacheStorage();
+			if (cacheStorage != null) {
+				FileBlockEntry fbe = new FileBlockEntry();
+				fbe.setBlockSize(WonderDBPropertyManager.getInstance().getDefaultBlockSize());
+				fbe.setFileName(cacheStorage);
+				StorageMetadata.getInstance().add(fbe);
+			}
+			
+			String cacheIndexStorage = WonderDBPropertyManager.getInstance().getCacheIndexStorage();
+			if (cacheIndexStorage != null) {
+				FileBlockEntry fbe = new FileBlockEntry();
+				fbe.setBlockSize(WonderDBPropertyManager.getInstance().getDefaultBlockSize());
+				fbe.setFileName(cacheStorage);
+				StorageMetadata.getInstance().add(fbe);				
+			}
+			
 			List<ColumnNameMeta> columns = new ArrayList<ColumnNameMeta>();
 			ColumnNameMeta cnm = new ColumnNameMeta();
 			cnm.setCollectioName("cache");
@@ -135,7 +146,8 @@ public class WonderDBCacheService {
 			cnm.setCoulmnId(1);
 			columns.add(cnm);
 			
-			SchemaMetadata.getInstance().createNewCollection("cache", null, columns, 10);
+//			SchemaMetadata.getInstance().createNewCollection("cache", "/data/cache.data", columns, 10);
+			SchemaMetadata.getInstance().createNewCollection("cache", cacheStorage, columns, 10);
 			
 			IndexNameMeta inm = new IndexNameMeta();
 			inm.setIndexName("cacheIndex");
@@ -145,8 +157,8 @@ public class WonderDBCacheService {
 			List<Integer> columnIdList = new ArrayList<Integer>();
 			columnIdList.add(0);
 			inm.setColumnIdList(columnIdList);
-//			String storageFile = StorageMetadata.getInstance().getDefaultFileName();
-			String storageFile = "cache.data";
+			String storageFile = cacheIndexStorage != null ? cacheIndexStorage : StorageMetadata.getInstance().getDefaultFileName();
+//			String storageFile = "cacheIndex.data";
 			SchemaMetadata.getInstance().createNewIndex(inm, storageFile);
 
 		}
@@ -162,13 +174,13 @@ public class WonderDBCacheService {
     }
 	
 	public void shutdown() {
-        primaryCacheHandler.shutdown();
-        secondaryCacheHandler.shutdown();
         ScatterGatherQueryExecutor.shutdown();
         WonderDBList.shutdown();
 //        Thread.currentThread().sleep(60000);
         System.out.println("Shutdown");
 		writer.shutdown();
+        primaryCacheHandler.shutdown();
+        secondaryCacheHandler.shutdown();
         StorageMetadata.getInstance().shutdown();
         System.out.println("Shutdown");
 		FilePointerFactory.getInstance().shutdown();

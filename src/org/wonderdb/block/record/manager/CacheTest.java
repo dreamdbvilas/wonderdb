@@ -287,15 +287,15 @@ public class CacheTest {
 		
 		public void run() {
 			byte[] bytes = new byte[500];
-			for (int i = 0; i < 20000; i++) {
+			for (int i = 0; i < 100000; i++) {
 				int r = Math.abs(random.nextInt()) % size;
 				CacheManager.getInstance().get((""+r).getBytes());
 //				CacheManager.getInstance().set((""+r).getBytes(), bytes);
 				r = Math.abs(random.nextInt()) % size;
 				byte[] b = CacheManager.getInstance().get((""+r).getBytes());
-				if (b == null || (b.length != 500 && b.length != 100)) {
-					System.out.println("error" + b.length);
-				}
+//				if (b == null || (b.length != 500 && b.length != 100)) {
+//					System.out.println("error" + b.length);
+//				}
 			}
 		}
 	}

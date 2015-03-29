@@ -43,7 +43,7 @@ public class PrimaryCacheResourceProvider implements CacheResourceProvider<Block
 		int size = bufferCount;
 		
 		cacheState.updateTotalCountBy(size);
-		if (cacheBean.getCleanupLowWaterMark() <= cacheState.getTotalCount()) {
+		if (cacheBean.getCleanupHighWaterMark() <= cacheState.getTotalCount()) {
 			cacheLock.notifyStartCleanup();
 		}
 		if (cacheBean.getCleanupHighWaterMark() <= cacheState.getTotalCount()) {

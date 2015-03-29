@@ -73,7 +73,7 @@ public class SecondaryCacheResourceProvider implements CacheResourceProvider<Blo
 			cacheLock.notifyEagerCleanup();
 		}
 		
-		if (cacheState.getTotalCount() >= cacheBean.getCleanupLowWaterMark()) {
+		if (cacheState.getTotalCount() >= cacheBean.getCleanupHighWaterMark()) {
 			cacheLock.notifyStartCleanup();
 		}
 		

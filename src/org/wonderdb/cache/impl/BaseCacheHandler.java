@@ -2,7 +2,6 @@ package org.wonderdb.cache.impl;
 
 import org.wonderdb.cache.CacheResourceProvider;
 import org.wonderdb.cache.Cacheable;
-import org.wonderdb.cache.InflightReads;
 import org.wonderdb.types.BlockPtr;
 
 /*******************************************************************************
@@ -28,7 +27,7 @@ public class BaseCacheHandler<Key, Data> implements CacheHandler<Key, Data> {
 	CacheState cacheState = null;
 	CacheBean cacheBean = null;
 	public CacheResourceProvider<Key, Data> cacheResourceProvider = null;
-	CacheEvictor<Key, Data> eagerEvictor = null;
+//	CacheEvictor<Key, Data> eagerEvictor = null;
 	CacheEvictor<Key, Data> normalEvictor = null;
 	boolean readFromFile = false;
 	public BaseCacheHandler(MemoryCacheMap<Key, Data> cacheMap, CacheBean cacheBean, CacheState cacheState, 
@@ -41,11 +40,11 @@ public class BaseCacheHandler<Key, Data> implements CacheHandler<Key, Data> {
 		this.cacheState = cacheState;
 //		this.inflightReads = inflightReads;
 		this.cacheResourceProvider = cacheResourceProvider;
-		eagerEvictor = new CacheEvictor<Key, Data>(true, cacheBean, cacheState, cacheLock, cacheMap, this);
+//		eagerEvictor = new CacheEvictor<Key, Data>(true, cacheBean, cacheState, cacheLock, cacheMap, this);
 		normalEvictor = new CacheEvictor<Key, Data>(false, cacheBean, cacheState, cacheLock, cacheMap, this);
-		Thread eagerCleanupThread = null;
-		eagerCleanupThread = new Thread(eagerEvictor, "Eager Cleanup Thread");
-		eagerCleanupThread.start();
+//		Thread eagerCleanupThread = null;
+//		eagerCleanupThread = new Thread(eagerEvictor, "Eager Cleanup Thread");
+//		eagerCleanupThread.start();
 		Thread normalCleanupThread = null;
 		normalCleanupThread = new Thread(normalEvictor, "Normal Cleanup Thread");
 		normalCleanupThread.start();
@@ -119,7 +118,7 @@ public class BaseCacheHandler<Key, Data> implements CacheHandler<Key, Data> {
 
 	@Override
 	public void shutdown() {
-		eagerEvictor.finish();
+//		eagerEvictor.finish();
 		normalEvictor.finish();
 	}
 
