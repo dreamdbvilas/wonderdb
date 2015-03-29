@@ -151,7 +151,7 @@ public class CacheWriter<Key, Data> extends Thread{
 //						pinnedBlocks.clear();
 					}
 					
-					Set<Key> writtenBlocks = new HashSet<>();
+					Set<Key> writtenBlocks = new HashSet<Key>();
 					int size = WonderDBPropertyManager.getInstance().getDiskAsyncWriterThreadPoolSize();
 					if (bufferMap.size() >= size || isShutdown) {
 						Iterator<Key> iter1 = bufferMap.keySet().iterator();

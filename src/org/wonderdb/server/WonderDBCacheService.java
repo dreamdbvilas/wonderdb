@@ -127,7 +127,7 @@ public class WonderDBCacheService {
 			if (cacheIndexStorage != null) {
 				FileBlockEntry fbe = new FileBlockEntry();
 				fbe.setBlockSize(WonderDBPropertyManager.getInstance().getDefaultBlockSize());
-				fbe.setFileName(cacheStorage);
+				fbe.setFileName(cacheIndexStorage);
 				StorageMetadata.getInstance().add(fbe);				
 			}
 			
