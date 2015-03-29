@@ -383,7 +383,6 @@ public class WonderDBConnection implements Connection {
 		
 		@Override
     	public void messageReceived(ChannelHandlerContext ctx, MessageEvent e) {
-			System.out.println("received");
     		ChannelBuffer buf = (ChannelBuffer) e.getMessage();
     		tmpBuffer.writeBytes(buf, buf.readableBytes());
     		while (tmpBuffer.readableBytes() > 0) {

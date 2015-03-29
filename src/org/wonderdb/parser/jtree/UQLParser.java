@@ -17,27 +17,6 @@ public class UQLParser/*@bgen(jjtree)*/implements UQLParserTreeConstants, UQLPar
         this((Reader)(new StringReader(s)));
     }
 
-    public static void main(String args[])
-    {
-        try
-        {
-              String query = args[0];
-              InputStream is = new ByteArrayInputStream(args[0].getBytes());
-              UQLParser t = new UQLParser(is);
-              SimpleNode n = t.Start();
-              n.dump(" ");
-//              ExpressionNode en = SimpleNodeHelper.getInstance().shouldQueryRewriteStartNode(n);
-//              SimpleNodeHelper.getInstance().flattenNode(en);
-             //UQLParser parser = new UQLParser(query);
-              //parser.parse();
-              // System.out.println(parser.parse().toString());
-        }
-        catch(Exception e)
-        {
-              e.printStackTrace();
-        }
-    }
-
   final public void number() throws ParseException {
                  /*@bgen(jjtree) number */
   SimpleNode jjtn000 = new SimpleNode(JJTNUMBER);

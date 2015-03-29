@@ -26,6 +26,7 @@ import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 
 import org.apache.log4j.BasicConfigurator;
+import org.apache.log4j.Logger;
 import org.apache.log4j.PropertyConfigurator;
 import org.jboss.netty.bootstrap.ServerBootstrap;
 import org.jboss.netty.buffer.ChannelBuffer;
@@ -91,6 +92,7 @@ public class WonderDBServer {
     public static void main(String[] args) throws Exception {
     	if (args == null || args.length != 1) {
     		System.out.println("Please provide init file at strartup");
+    		Logger.getRootLogger().fatal("Please provide init file at strartup");
     		return;
     	}
     	

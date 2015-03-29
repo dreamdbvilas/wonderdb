@@ -17,26 +17,6 @@ public class FilterParser/*@bgen(jjtree)*/implements FilterParserTreeConstants, 
         this((Reader)(new StringReader(s)));
     }
 
-    public static void main(String args[])
-    {
-        try
-        {
-              String query = args[0];
-              InputStream is = new ByteArrayInputStream(args[0].getBytes());
-              FilterParser t = new FilterParser(is);
-              SimpleNode n = t.Start();
-              n.dump(" ");
-//              ExpressionNode en = SimpleNodeHelper.getInstance().shouldQueryRewriteStartNode(n);
-//              SimpleNodeHelper.getInstance().flattenNode(en);
-              //UQLParser parser = new UQLParser(query);
-              //parser.parse();
-              // System.out.println(parser.parse().toString());
-        }
-        catch(Exception e)
-        {
-              e.printStackTrace();
-        }
-    }
 
 /** Root production. */
   final public Object parse() throws ParseException {

@@ -56,6 +56,8 @@ public class SingleBlockPtr implements BlockPtr, Serializable {
 	@Override
 	public int hashCode() {
 		int i = (int) (posn/blockSize)+fileId;
+//		long x = posn >> 11;
+//		int i = (int) x + fileId;
 		if (i == Integer.MIN_VALUE) {
 			i = 0;
 		}

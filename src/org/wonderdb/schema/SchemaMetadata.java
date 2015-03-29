@@ -44,7 +44,6 @@ import org.wonderdb.types.CollectionNameMeta;
 import org.wonderdb.types.ColumnNameMeta;
 import org.wonderdb.types.ColumnSerializerMetadata;
 import org.wonderdb.types.DBType;
-import org.wonderdb.types.FileBlockEntry;
 import org.wonderdb.types.IndexNameMeta;
 import org.wonderdb.types.IndexRecordMetadata;
 import org.wonderdb.types.SingleBlockPtr;

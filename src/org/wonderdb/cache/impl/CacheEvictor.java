@@ -18,6 +18,7 @@ package org.wonderdb.cache.impl;
 
 import java.util.List;
 
+import org.apache.log4j.Logger;
 import org.wonderdb.cache.Cacheable;
 
 
@@ -57,10 +58,8 @@ public class CacheEvictor<Key, Data> implements Runnable {
 		
 		int bucket = 0;
 		
-//		System.out.println("starting cleanup thread");
 		while (true) {
 			if (finish) {
-//				System.out.println("ending cleanup thread");
 				return;
 			}
 			
@@ -70,15 +69,13 @@ public class CacheEvictor<Key, Data> implements Runnable {
 				cacheLock.waitOnStartCleanup();
 			}
 			if (finish) {
-				System.out.println("ending cleanup thread");
+				Logger.getLogger(getClass()).info("ending cleanup thread");
 				return;
 			}
-//			System.out.println("wait over");
 			if (cacheState.getTotalCount() <= objCountAfterRun) {
 				continue;
 			}
 			
-//			System.out.println("Starting eviction");
 			while (true) {
 				List<Cacheable<Key, Data>> list = cacheMap.getBucket(bucket, true);
 //				Set<Object> pinnedBlocks = new HashSet<>();

@@ -176,8 +176,6 @@ public class FilePointerFactory {
 			try {
 				currentSize = raf.length();
 				raf.setLength(currentSize+size);
-				long len = raf.length();
-				int i = 0;
 			} catch (IOException e) {
 				// TODO Auto-generated catch block
 				e.printStackTrace();
@@ -185,31 +183,4 @@ public class FilePointerFactory {
 		}
 		return currentSize;
 	}
-//	
-//	public void doubleSize(String fileName) {
-//		RandomAccessFile file = getRawFilePointer(fileName);
-//		try {
-//			long len = file.length();
-//			if (len >= 10000000000L) {
-//				len = len + 10000000000L;
-//			} else if (len >= 500000) {
-//				len = len * 2;
-//			} else {
-//				len = 500000;				
-//			}
-//			file.setLength(len);
-//		} catch (IOException e) {
-//			e.printStackTrace();
-//		}
-//	}
-//	
-//	public static void main(String[] args) throws Exception {
-//		RandomAccessFile raf = new RandomAccessFile("vvv", "rw");
-//		RandomAccessFile raf1 = new RandomAccessFile("vvv", "rw");
-//		AsynchronousFileChannel afc = AsynchronousFileChannel.open("vvv", StandardOpenOption.READ, StandardOpenOption.WRITE, StandardOpenOption.CREATE);
-//		ByteBuffer buffer = ByteBuffer.allocate(100);
-//		buffer.put("vilas".getBytes());
-//		raf.getChannel().write(buffer, 0);
-//		raf1.getChannel().write(buffer, 2000);
-//	}
 }

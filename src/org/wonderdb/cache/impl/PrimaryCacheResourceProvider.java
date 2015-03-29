@@ -4,10 +4,8 @@ import java.util.List;
 
 import org.wonderdb.cache.CacheResourceProvider;
 import org.wonderdb.cache.Cacheable;
-import org.wonderdb.core.collection.RecordUtils;
 import org.wonderdb.file.StorageUtils;
 import org.wonderdb.types.BlockPtr;
-import org.wonderdb.types.Extended;
 import org.wonderdb.types.record.Record;
 
 /*******************************************************************************

@@ -67,13 +67,18 @@ public class CacheTest {
 			}
 
 		}
+
+		if ("exhaustiveTest".equals(type)) {
+			main2(args);
+		}
+		
 		long end = System.currentTimeMillis()-stat;
 		System.out.println("Total time: " + end);
 		WonderDBCacheService.getInstance().shutdown();
 	}
 	
 	public static void main2(String[] args) throws Exception {
-		WonderDBCacheService.getInstance().init(args[0]);
+//		WonderDBCacheService.getInstance().init(args[0]);
 		String shouldWrite = args[1];
 		int noOfThreads = Integer.parseInt(args[2]);
 		
@@ -250,7 +255,7 @@ public class CacheTest {
 		long finish = System.currentTimeMillis();
 		long total = finish - currentTime;
 		System.out.println("time taken: " + total);
-		WonderDBCacheService.getInstance().shutdown();
+//		WonderDBCacheService.getInstance().shutdown();
 
 	}	
 		
@@ -262,8 +267,8 @@ public class CacheTest {
 //			b[0]=1;
 //			CacheManager.getInstance().set(b, b);
 //			if (true) return;
-			for (int i = 0; i < 1000; i++) {
-				int key = Math.abs(random.nextInt()) % 100000;
+			for (int i = 0; i < 10000; i++) {
+				int key = Math.abs(random.nextInt()) % 1000000;
 				int size = Math.abs(random.nextInt()) % 1000;
 //				int size = 1000;
 				byte[] bytes = new byte[size+1];

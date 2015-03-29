@@ -176,13 +176,8 @@ public class WonderDBList {
 			}	
 			
 			int posn = Collections.binarySearch(block.getData(), oldRecord, new RecordComparator());
-			if (posn < 0) {
-				System.out.println("Issue: trying to update deleted record. Should never happen");
-			}
 			block.getData().set(posn, oldRecord);
 			
-//			int newConsumedResources = RecordUtils.getInstance().getConsumedResources(oldRecord);
-//			primaryResourceProvider.getResource(block.getPtr(), newConsumedResources-consumedResources);
 			if (oldRecord instanceof TableRecord) {
 				changedColumnIds = new ArrayList<Integer>(((TableRecord) oldRecord).getColumnMap().keySet());
 			}

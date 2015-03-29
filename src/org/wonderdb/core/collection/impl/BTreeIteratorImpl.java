@@ -16,9 +16,7 @@ package org.wonderdb.core.collection.impl;
  *    limitations under the License.
  *******************************************************************************/
 
-import java.util.ArrayList;
 import java.util.HashSet;
-import java.util.List;
 import java.util.Set;
 
 import org.wonderdb.block.Block;
@@ -118,14 +116,4 @@ public class BTreeIteratorImpl extends BaseResultIteratorImpl {
 			super.remove();
 		}
 	}	
-	
-	public static void main(String[] args) {
-		List<Integer> list = new ArrayList<Integer>();
-		list.add(1, 0);
-	}
-
-//	@Override
-//	public String getSchemaObjectName() {
-//		return schemaObjectName;
-//	}
 }

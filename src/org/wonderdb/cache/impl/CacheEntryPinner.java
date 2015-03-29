@@ -42,8 +42,6 @@ public class CacheEntryPinner {
 	public void pin(Object ptr, Set<Object> pinnedBlocks) {
 		if (ptr instanceof BlockPtr) {
 			
-		} else {
-			int x =0;
 		}
 		if (pinnedBlocks != null && !pinnedBlocks.contains(ptr) && ptr != null) {
 			list.add(ptr);

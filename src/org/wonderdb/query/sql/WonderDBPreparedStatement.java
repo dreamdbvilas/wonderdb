@@ -742,7 +742,6 @@ public class WonderDBPreparedStatement implements PreparedStatement {
 	}
 	
 	private static class BindValue {
-		@SuppressWarnings("unused")
 		private int type;
 		private Object value;
 		

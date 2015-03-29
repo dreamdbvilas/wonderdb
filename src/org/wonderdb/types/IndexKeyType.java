@@ -61,7 +61,7 @@ public class IndexKeyType implements DBType {
 		IndexKeyType key = null;
 		if (k instanceof IndexKeyType) {
 			key = (IndexKeyType) k;
-		}
+		} 
 		
 		int val = 0;
 		

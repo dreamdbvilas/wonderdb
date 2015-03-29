@@ -35,10 +35,6 @@ public class IndexBranchBlock extends BaseIndexBlock {
 
 		if (mid >= getData().size()) {
 			mid = getData().size()-1;
-		} else {
-			int b = 0;
-			b = 10;
-			
 		}
 		
 		IndexRecord r = (IndexRecord) getData().get(mid);

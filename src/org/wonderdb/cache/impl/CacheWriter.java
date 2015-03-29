@@ -28,6 +28,7 @@ import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 
+import org.apache.log4j.Logger;
 import org.jboss.netty.buffer.ChannelBuffer;
 import org.jboss.netty.buffer.ChannelBuffers;
 import org.wonderdb.cache.CacheDestinationWriter;
@@ -200,7 +201,7 @@ public class CacheWriter<Key, Data> extends Thread{
 				syncTime = Math.max(syncTime, inprocessSyncTime);
 				LogManager.getInstance().resetLogs(syncTime);
 				if (isShutdown) {
-					System.out.println("didnt write: "+cacheMap.writtenBlocks.size());
+					Logger.getLogger(getClass()).info("didnt write: "+cacheMap.writtenBlocks.size());
 					if (cacheMap.writtenBlocks.size()>0 && shutc++ <= 5) {
 						continue; 
 					} else {

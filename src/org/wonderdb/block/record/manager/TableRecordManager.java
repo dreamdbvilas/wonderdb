@@ -482,7 +482,6 @@ public class TableRecordManager {
 			while (iter.hasNext()) {
 				IndexRecord record = (IndexRecord) iter.next();
 				iter.remove();
-				int i = 0;
 			}
 			ikt = tree.remove(ikt, pinnedBlocks, txnId);
 			WonderDBList dbList = SchemaMetadata.getInstance().getCollectionMetadata("cache").getRecordList(shard);
