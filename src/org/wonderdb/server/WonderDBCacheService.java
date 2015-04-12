@@ -50,11 +50,11 @@ public class WonderDBCacheService {
 	
 	static CacheBean primaryCacheBean = new CacheBean();
 	static CacheState primaryCacheState = new CacheState();
-	static MemoryCacheMap<BlockPtr, List<Record>> primaryCacheMap = new MemoryCacheMap<BlockPtr, List<Record>>(1000, 5, false);
+	static MemoryCacheMap<BlockPtr, List<Record>> primaryCacheMap = null;
 	static CacheLock cacheLock = new CacheLock();
 	static CacheBean secondaryCacheBean = new CacheBean();
 	static CacheState secondaryCacheState = new CacheState();
-	static MemoryCacheMap<BlockPtr, ChannelBuffer> secondaryCacheMap = new MemoryCacheMap<BlockPtr, ChannelBuffer>(5000, 5, true);
+	static MemoryCacheMap<BlockPtr, ChannelBuffer> secondaryCacheMap = null;
 	static CacheHandler<BlockPtr, List<Record>> primaryCacheHandler = null;
 	static CacheHandler<BlockPtr, ChannelBuffer> secondaryCacheHandler = null;
 	public static CacheWriter<BlockPtr, ChannelBuffer> writer = null;
@@ -62,6 +62,8 @@ public class WonderDBCacheService {
 	public void init(String propertyFile) throws Exception {
     	WonderDBPropertyManager.getInstance().init(propertyFile);
     	
+    	primaryCacheMap = new MemoryCacheMap<BlockPtr, List<Record>>((int) (WonderDBPropertyManager.getInstance().getPrimaryCacheMaxSize()*0.8), 5, false);
+    	secondaryCacheMap = new MemoryCacheMap<BlockPtr, ChannelBuffer>((int) (WonderDBPropertyManager.getInstance().getSecondaryCacheMaxSize()*.8), 5, true);
 		primaryCacheBean.setCleanupHighWaterMark(WonderDBPropertyManager.getInstance().getPrimaryCacheHighWatermark()); // 1000
 		primaryCacheBean.setCleanupLowWaterMark(WonderDBPropertyManager.getInstance().getPrimaryCacheLowWatermark()); // 999
 		primaryCacheBean.setMaxSize(WonderDBPropertyManager.getInstance().getPrimaryCacheMaxSize()); // 1000
@@ -98,8 +100,6 @@ public class WonderDBCacheService {
 		if (file.exists()) {
 			StorageMetadata.getInstance().init(false);
 			SchemaMetadata.getInstance().init(false);
-			
-
 		} else {
 			StorageMetadata.getInstance().init(true);
 			SchemaMetadata.getInstance().init(true);
@@ -146,10 +146,14 @@ public class WonderDBCacheService {
 			List<Integer> columnIdList = new ArrayList<Integer>();
 			columnIdList.add(0);
 			inm.setColumnIdList(columnIdList);
+			if ("btree".equals(WonderDBPropertyManager.getInstance().getCacheType())) {
+				inm.setIndexType((byte) 0);				
+			} else {
+				inm.setIndexType((byte) 1);
+			}
 			String storageFile = cacheIndexStorage != null ? cacheIndexStorage : StorageMetadata.getInstance().getDefaultFileName();
 //			String storageFile = "cacheIndex.data";
 			SchemaMetadata.getInstance().createNewIndex(inm, storageFile);
-
 		}
 
 //        writer.shutdown();

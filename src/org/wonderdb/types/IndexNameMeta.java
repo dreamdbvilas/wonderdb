@@ -15,6 +15,7 @@ public class IndexNameMeta implements DBType {
 	boolean unique = false;
 	boolean isAscending = true;
 	BTree tree = null;
+	byte indexType;
 	
 	public BTree getTree() {
 		return tree;
@@ -110,4 +111,12 @@ public class IndexNameMeta implements DBType {
 	public BTree getIndexTree(Shard shard) {
 		return tree;
 	}	
+
+	public byte getIndexType() {
+		return indexType;
+	}
+
+	public void setIndexType(byte indexType) {
+		this.indexType = indexType;
+	}
 }

@@ -350,6 +350,7 @@ public class IndexRangeScan implements QueryPlan {
 			IndexCompareIndexQuery query = new IndexCompareIndexQuery(min, includeMin, meta, pinnedBlocks);
 			return tree.find(query, writeLock, pinnedBlocks);
 		}
+		
 		@Override
 		public void unlock(boolean shouldUnpin) {
 			unlock();
@@ -363,6 +364,11 @@ public class IndexRangeScan implements QueryPlan {
 		@Override
 		public TypeMetadata getTypeMetadata() {
 			return iter.getTypeMetadata();
+		}
+
+		@Override
+		public Record peek() {
+			return null;
 		}
 
 //		@Override

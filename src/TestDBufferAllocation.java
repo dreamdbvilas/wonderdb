@@ -6,7 +6,7 @@ import java.util.List;
 public class TestDBufferAllocation {
 	public static void main(String[] args) {
 //		int i = 0;
-		List<ByteBuffer> list = new ArrayList<>();
+		List<ByteBuffer> list = new ArrayList<ByteBuffer>();
 		try {
 			while(true) {
 				list.add(ByteBuffer.allocateDirect(2048));
