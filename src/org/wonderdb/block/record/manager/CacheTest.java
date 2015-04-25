@@ -85,6 +85,23 @@ public class CacheTest {
 		
 		
 		if ("test".equals(type)) {
+			for (int i = 0; i < size; i++) {
+				try {
+					if (i == 100) {
+						int b = 0;
+						b = 10;
+					}
+					byte[] b = CacheManager.getInstance().get((""+i+sb.toString()).getBytes());
+					if (bytes == null || bytes.length != 500) {
+						System.out.println("problem " + i);
+					}
+				} catch (Exception e) {
+					System.out.println("Exception " + i);
+					e.printStackTrace();
+				}
+			}
+
+			stat = System.currentTimeMillis();
 			if ("true".equals(shouldWrite)) {
 				Thread[] array = new Thread[noOfThreads];
 				for (int i = 0; i < noOfThreads; i++) {
