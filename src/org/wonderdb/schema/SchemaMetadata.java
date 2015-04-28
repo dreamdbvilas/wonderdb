@@ -32,6 +32,7 @@ import org.wonderdb.core.collection.BTree;
 import org.wonderdb.core.collection.ResultIterator;
 import org.wonderdb.core.collection.WonderDBList;
 import org.wonderdb.core.collection.impl.BTreeImpl;
+import org.wonderdb.core.collection.impl.HashIndexImpl;
 import org.wonderdb.exception.InvalidCollectionNameException;
 import org.wonderdb.metadata.StorageMetadata;
 import org.wonderdb.serialize.SerializerManager;
@@ -240,7 +241,13 @@ public class SchemaMetadata {
 					ObjectListRecord record = (ObjectListRecord) iter2.next(); 
 					IndexNameMeta inm = (IndexNameMeta) record.getColumn(); 
 					TypeMetadata meta = getIndexMetadata(inm);
-					BTree tree = BTreeImpl.load(inm.isUnique(), inm.getHead(), meta, pinnedBlocks);
+					BTree tree = null;
+					
+					if (inm.getIndexType() == 1) {
+						tree = HashIndexImpl.load(inm.getHead(), meta, pinnedBlocks);
+					} else {
+						tree = BTreeImpl.load(inm.isUnique(), inm.getHead(), meta, pinnedBlocks);
+					}
 					inm.setTree(tree);
 					indexByName.put(inm.getIndexName(), inm);
 					List<IndexNameMeta> list = collectionIndexes.get(inm.getCollectionName());
@@ -336,11 +343,18 @@ public class SchemaMetadata {
 			byte fileId = StorageMetadata.getInstance().getFileId(storageFile);
 			long posn = FileBlockManager.getInstance().getNextBlock(fileId);
 			BlockPtr head = new SingleBlockPtr(fileId, posn);
-			BTree tree = BTreeImpl.create(inm.isUnique(), head, 
-					getIndexMetadata(inm), txnId, pinnedBlocks);
+			BTree tree = null;
+			
+			if (inm.getIndexType() == 1) {
+				int size = WonderDBPropertyManager.getInstance().getCacheBuckets();
+				tree = HashIndexImpl.create(true, head, 35000, getIndexMetadata(inm), txnId, pinnedBlocks);
+			} else {
+				tree = BTreeImpl.create(inm.isUnique(), head, getIndexMetadata(inm), txnId, pinnedBlocks);
+			}
+			
 			inm.setTree(tree);
 			inm.setHead(head);
-			
+
 			ObjectListRecord record = new ObjectListRecord(inm);
 			indexList.add(record, txnId, new ColumnSerializerMetadata(SerializerManager.INDEX_NAME_META_TYPE), pinnedBlocks);
 			List<IndexNameMeta> list = collectionIndexes.get(inm.getCollectionName());

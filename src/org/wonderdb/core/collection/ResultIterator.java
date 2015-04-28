@@ -35,4 +35,5 @@ public interface ResultIterator {
 	public Block getCurrentBlock();
 	public Set<Object> getPinnedSet();
 	public TypeMetadata getTypeMetadata();
+	public Record peek();
 }

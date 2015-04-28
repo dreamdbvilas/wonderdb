@@ -13,10 +13,10 @@ public class FileCacheWriter implements CacheDestinationWriter<BlockPtr, Channel
 
 	@Override
 	public ChannelBuffer copy(BlockPtr ptr, ChannelBuffer data) {
-		
-		data.clear();
-		data.writerIndex(data.capacity());
-		ChannelBuffer b = ChannelBuffers.copiedBuffer(data);
+		ChannelBuffer wrapped = ChannelBuffers.wrappedBuffer(data);
+		wrapped.clear();
+		wrapped.writerIndex(wrapped.capacity());
+		ChannelBuffer b = ChannelBuffers.copiedBuffer(wrapped);
 		return b;
 //		data.clear();
 //		data.writerIndex(data.capacity());

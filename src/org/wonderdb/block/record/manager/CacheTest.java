@@ -33,7 +33,8 @@ import org.wonderdb.types.record.TableRecord;
 public class CacheTest {
 	static Random random = new Random(System.currentTimeMillis());
 	static ConcurrentMap<Integer, Integer> map = new ConcurrentHashMap<Integer, Integer>();
-
+	static StringBuilder sb = new StringBuilder();
+	
 	public static void main(String[] args) throws Exception {
 		WonderDBCacheService.getInstance().init(args[0]);
 		String shouldWrite = args[1];
@@ -41,17 +42,66 @@ public class CacheTest {
 		String type = args[3];
 		int size = Integer.parseInt(args[4]);
 		byte[] bytes = new byte[500];
+		for (int i = 0; i < 1600; i++) {
+			sb.append("0");
+		}
 		
 		long stat = System.currentTimeMillis();
 		if ("load".equals(type)) {
 			for (int i = 0; i < size; i++) {
-				CacheManager.getInstance().set((""+i).getBytes(), bytes);
-				
+				if (i == 32463) {
+					int b = 0;
+					b = 10;
+				}
+				try {
+					CacheManager.getInstance().set((""+i+sb.toString()).getBytes(), bytes);
+				} catch (Exception e) {
+					e.printStackTrace();
+					System.out.println("stop");
+					
+				}
+//				bytes = CacheManager.getInstance().get((""+i).getBytes());
+//				if (bytes == null || bytes.length != 500) {
+//					System.out.println("problem " + i);
+//				}
 			}
+			
+//			for (int i = 0; i < size; i++) {
+//				try {
+//					if (i == 100) {
+//						int b = 0;
+//						b = 10;
+//					}
+//					bytes = CacheManager.getInstance().get((""+i).getBytes());
+//					if (bytes == null || bytes.length != 500) {
+//						System.out.println("problem " + i);
+//					}
+//				} catch (Exception e) {
+//					System.out.println("Exception " + i);
+//					e.printStackTrace();
+//				}
+//			}
 		}
 		
 		
 		if ("test".equals(type)) {
+			for (int i = 0; i < size; i++) {
+				try {
+					if (i == 100) {
+						int b = 0;
+						b = 10;
+					}
+					byte[] b = CacheManager.getInstance().get((""+i+sb.toString()).getBytes());
+					if (bytes == null || bytes.length != 500) {
+						System.out.println("problem " + i);
+					}
+				} catch (Exception e) {
+					System.out.println("Exception " + i);
+					e.printStackTrace();
+				}
+			}
+
+			stat = System.currentTimeMillis();
 			if ("true".equals(shouldWrite)) {
 				Thread[] array = new Thread[noOfThreads];
 				for (int i = 0; i < noOfThreads; i++) {
@@ -297,10 +347,10 @@ public class CacheTest {
 				CacheManager.getInstance().get((""+r).getBytes());
 //				CacheManager.getInstance().set((""+r).getBytes(), bytes);
 				r = Math.abs(random.nextInt()) % size;
-				byte[] b = CacheManager.getInstance().get((""+r).getBytes());
-//				if (b == null || (b.length != 500 && b.length != 100)) {
-//					System.out.println("error" + b.length);
-//				}
+				byte[] b = CacheManager.getInstance().get((""+r+sb.toString()).getBytes());
+				if (b == null || (b.length != 500 && b.length != 100)) {
+					System.out.println("error" + b.length);
+				}
 			}
 		}
 	}

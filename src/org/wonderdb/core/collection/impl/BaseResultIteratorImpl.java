@@ -63,6 +63,14 @@ public abstract class BaseResultIteratorImpl implements ResultIterator {
 		return record;
 	}
 	
+	public Record peek() {
+		Record record = null;
+		if (currentPosn != null && currentPosn.getBlock() != null && currentPosn.getBlock().getData().size() > currentPosn.getPosn()) {
+			record =  currentPosn.getBlock().getData().get(currentPosn.getPosn());
+		}
+		return record;
+	}
+	
 	public boolean hasNext() {		
 		if (currentPosn == null) {
 			return false;

@@ -66,7 +66,7 @@ public class DefaultSerializer implements TypeSerializer {
 			return new SingleBlockPtr(fileId, posn);
 		case SerializerManager.BLOCK_PTR_LIST_TYPE:
 			int s = buffer.readInt();
-			List<BlockPtr> list = new ArrayList<BlockPtr>();
+			List<BlockPtr> list = new ArrayList<BlockPtr>(s);
 			for (int i = 0; i < s; i++) {
 				BlockPtr ptr = (BlockPtr) unmarshal(SerializerManager.BLOCK_PTR, buffer, null);
 				list.add(ptr);

@@ -39,6 +39,7 @@ public class IndexNameMetaSerializer implements TypeSerializer {
 		BlockPtr head = (BlockPtr) Serializer.getInstance().getObject(SerializerManager.BLOCK_PTR, buffer, meta);
 		byte b = buffer.readByte();
 		byte b1 = buffer.readByte();
+		byte b2 = buffer.readByte();
 		
 		IndexNameMeta inm = new IndexNameMeta();
 		inm.setCollectionName(collectionName);
@@ -48,7 +49,7 @@ public class IndexNameMetaSerializer implements TypeSerializer {
 		inm.setIndexName(indexName);
 		inm.setUnique(b > 0 ? true : false);
 		inm.setAscending(b1 > 0 ? true : false);
-		
+		inm.setIndexType(b2);
 		return inm;
 	}
 
@@ -67,6 +68,7 @@ public class IndexNameMetaSerializer implements TypeSerializer {
 		Serializer.getInstance().serialize(SerializerManager.BLOCK_PTR, inm.getHead(), buffer, meta);
 		buffer.writeByte(inm.isUnique() ? (byte) 1 : (byte) 0);
 		buffer.writeByte(inm.isAscending() ? 1 : 0);
+		buffer.writeByte(inm.getIndexType());
 	}
 
 	@Override
@@ -78,6 +80,7 @@ public class IndexNameMetaSerializer implements TypeSerializer {
 		size = size + Integer.SIZE/8;
 		size = size + inm.getColumnIdList().size()*Integer.SIZE/8;
 		size = size + Serializer.getInstance().getObjectSize(SerializerManager.BLOCK_PTR, inm.getHead(), meta);
+		size = size + 1;
 		size = size + 1;
 		size = size + 1;
 		

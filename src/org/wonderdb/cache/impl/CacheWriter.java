@@ -190,8 +190,8 @@ public class CacheWriter<Key, Data> extends Thread{
 								bufferMap.remove(ptr1);
 							}
 						}
-//						bufferMap.clear();
-//						writtenBlocks.clear();
+						bufferMap.clear();
+						writtenBlocks.clear();
 					}								
 
 				}
@@ -202,7 +202,7 @@ public class CacheWriter<Key, Data> extends Thread{
 				LogManager.getInstance().resetLogs(syncTime);
 				if (isShutdown) {
 					Logger.getLogger(getClass()).info("didnt write: "+cacheMap.writtenBlocks.size());
-					if (cacheMap.writtenBlocks.size()>0 && shutc++ <= 5) {
+					if (cacheMap.writtenBlocks.size()>0) {
 						continue; 
 					} else {
 						shutdownOver = true;

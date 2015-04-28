@@ -62,6 +62,9 @@ public class WonderDBPropertyManager {
 	
 	private static final String CACHE_STORAGE = "cache.storage";
 	private static final String CACHE_INDEX_STORAGE = "cacheIndex.storage";
+	private static final String CACHE_TYPE = "cache.type";
+	private static final String CACHE_BUCKETS = "cache.buckets";
+
 	
 
 	private static WonderDBPropertyManager instance = new WonderDBPropertyManager();
@@ -489,5 +492,13 @@ public class WonderDBPropertyManager {
 	
 	public String getCacheIndexStorage() {
 		return properties.getProperty(CACHE_INDEX_STORAGE);
+	}
+	
+	public String getCacheType() {
+		return properties.getProperty(CACHE_TYPE);
+	}
+	
+	public int getCacheBuckets() {
+		return Integer.parseInt(properties.getProperty(CACHE_BUCKETS));
 	}
 }

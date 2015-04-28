@@ -77,7 +77,7 @@ public class SplitFactory {
 		for (int i = 0; i < list.size(); i++) {
 			Record st = (Record) list.get(i);
 			int size = RecordSerializer.getInstance().getRecordSize(st, newMeta);
-			currentListSize = currentListSize + size;
+//			currentListSize = currentListSize + size;
 			if (currentListSize >= maxBlockSize*0.7) {
 				currentList = new ArrayList<Record>();
 				currentList.add(st);
@@ -85,6 +85,7 @@ public class SplitFactory {
 				currentListSize = size;
 			} else {
 				currentList.add(st);
+				currentListSize = currentListSize + size;
 			}
 		}
 		return listOfList;
